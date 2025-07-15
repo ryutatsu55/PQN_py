@@ -2,18 +2,22 @@ from src import PQNModel
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
+from tqdm import tqdm
+import time
 
 if __name__ == "__main__":
 
+    start = time.time()
     # set a PQN cell
     # you can use RSexci, RSinhi, FS, LTS, IB, EB, PB, or Class2 mode
-    cell0=PQNModel(mode='RSexci')
+    N = 1000
+    cell0=PQNModel(mode='RSexci', N = N)
 
     # length of simulation [s]
     tmax=2
 
     # set the number of iterations
-    number_of_iterations=int(tmax/cell0.PARAM['dt'])
+    number_of_iterations=int(tmax/cell0.PARAM['dt'][1])
 
     # set step input
     I=np.zeros(number_of_iterations)
@@ -21,9 +25,12 @@ if __name__ == "__main__":
 
     # run simulatiion
     v0=[]
-    for i in range(number_of_iterations):
+    for i in tqdm(range(number_of_iterations)):
         cell0.update(I[i])
         v0.append(cell0.get_membrane_potential())
+
+    end = time.time()
+    print(f"Simulation time: {end - start:.2f} seconds")
 
     # plot simulation result
     fig = plt.figure(figsize=(8,4))
