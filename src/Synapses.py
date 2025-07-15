@@ -49,4 +49,3 @@ class DoubleExponentialSynapse:
         self.hr = hr
         
         return r
-
