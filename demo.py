@@ -4,10 +4,16 @@ import matplotlib.pyplot as plt
 from matplotlib import gridspec
 from tqdm import tqdm
 import time
+import networkx as nx
 
 if __name__ == "__main__":
 
     start = time.time()
+    #りざばーのネットワーク作る
+    #network可視化
+    #学習アルゴリズム追加
+    #8:2で興奮と抑制混ぜる
+
     # set a PQN cell
     # you can use RSexci, RSinhi, FS, LTS, IB, EB, PB, or Class2 mode
     N = 1000
@@ -17,18 +23,19 @@ if __name__ == "__main__":
     tmax=2
 
     # set the number of iterations
-    number_of_iterations=int(tmax/cell0.PARAM['dt'][1])
+    number_of_iterations=int(tmax/cell0.PARAM['dt'])
 
     # set step input
     I=np.zeros(number_of_iterations)
     I[int(number_of_iterations/4):int(number_of_iterations/4*3)] = 0.09
 
     # run simulatiion
-    v0=[]
+    v0= np.zeros((number_of_iterations, N))
     for i in tqdm(range(number_of_iterations)):
         cell0.update(I[i])
-        v0.append(cell0.get_membrane_potential())
+        v0[i] = (cell0.get_membrane_potential())
 
+    print(v0.shape)
     end = time.time()
     print(f"Simulation time: {end - start:.2f} seconds")
 
@@ -37,7 +44,7 @@ if __name__ == "__main__":
     spec = gridspec.GridSpec(ncols=1, nrows=2, figure=fig, hspace=0.1, height_ratios=[4, 1])
     ax0 = fig.add_subplot(spec[0])
     ax1 = fig.add_subplot(spec[1])
-    ax0.plot([i*cell0.PARAM['dt'] for i in range(0, number_of_iterations)], v0)
+    ax0.plot([i*cell0.PARAM['dt'] for i in range(0, number_of_iterations)], v0[:,2])
     ax0.set_xlim(0, tmax)
     ax0.set_ylabel("v")
     ax0.set_xticks([])
