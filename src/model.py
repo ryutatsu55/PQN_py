@@ -24,7 +24,7 @@ class PQNModel:
 
     # set parameters of the given mode
     def set_PARAM(self):
-        self.PARAM['dt']=0.0001
+        self.PARAM['dt']=0.0001 # time step [s]
         self.PARAM['afn']=1.5625
         self.PARAM['afp']=-0.5625
         self.PARAM['bfn']=-1.125

@@ -16,14 +16,14 @@ if __name__ == "__main__":
 
     # set a PQN cell
     # you can use RSexci, RSinhi, FS, LTS, IB, EB, PB, or Class2 mode
-    N = 1000
+    N = int(input("number of neurons: "))
     cell0=PQNModel(mode='RSexci', N = N)
     # set a synapse
     synapses_out = DoubleExponentialSynapse(N, dt=cell0.PARAM['dt'], td=2e-2, tr=2e-3)
 
     #initialization
     # length of simulation [s]
-    tmax=2
+    tmax=0.001
     # set the number of iterations
     number_of_iterations=int(tmax/cell0.PARAM['dt'])
 
@@ -78,7 +78,7 @@ if __name__ == "__main__":
 
     # run simulatiion
     start = time.perf_counter()
-    for i in range(number_of_iterations):
+    for i in tqdm(range(number_of_iterations)):
         I[i] += next_input
         cell0.update(I[i])  # update cell state
         v0[i] = (cell0.get_membrane_potential())
@@ -94,7 +94,7 @@ if __name__ == "__main__":
 
 
     end = time.perf_counter()
-    print(f"Simulation time: {(end - start)*1000:.5f} ms")
+    print(f"processing time for 1ms simulation mas {(end - start)*1000} ms when reservoir_size was {N}")
 
     # plot simulation result
     fig = plt.figure(num=2, figsize=(10,4))
