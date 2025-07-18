@@ -2,3 +2,4 @@ numpy
 matplotlib
 tqdm
 cupy-cuda12x
+from matplotlib.ticker import MaxNLocator
