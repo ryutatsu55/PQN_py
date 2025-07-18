@@ -96,11 +96,11 @@ class PQNModel:
     # calculate Δv for the RSexhi, RSinhi, FS, LTS, IB, and EB modes
     def dv0(self,I_float):
         B=self.BIT_Y_SHIFT
-        I=(I_float*2**self.BIT_WIDTH_FRACTIONAL)
+        I=(I_float*2**self.BIT_WIDTH_FRACTIONAL).astype(cp.int32)
         v=self.state_variable_v
         n=self.state_variable_n
         q=self.state_variable_q
-        vv = ((v * v) // (1 << self.BIT_WIDTH_FRACTIONAL))
+        vv = ((v * v) // (1 << self.BIT_WIDTH_FRACTIONAL)).astype(cp.int32)
         
         v0 = cp.where(
             v < 0,
