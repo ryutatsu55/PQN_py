@@ -41,6 +41,7 @@ if __name__ == "__main__":
                 if p < 0.05:  # pの確率で結合
                     if j<N/5+crust_idx*N/4:
                         resovoir_weight[i][j] = 1*random.random()
+                        # resovoir_weight[i][j] = 1
                     else:
                         resovoir_weight[i][j] = -1*random.random()  # 2割　抑制結合
         crust_idx += 1
@@ -48,12 +49,12 @@ if __name__ == "__main__":
     M = 4   # クラスタ間の接続数
     for hoge in range(M*4):
         i_range = (hoge*N/4)%N
-        j_range = (hoge*N/2)%N
+        j_range = ((hoge+1)*N/4)%N
         p = random.random()
         if p < 0.5:
             i, j = j, i  # 入れ替え
         i = random.randint(int(i_range), int(i_range+N/4-1))
-        j = random.randint(int((j_range+N/4)%N), int((j_range+N/2-1)%N))
+        j = random.randint(int(j_range), int(j_range+N/4-1))
         if (j%(N/4) < N/5):
             resovoir_weight[i][j] = 1*random.random()
         else:
@@ -62,26 +63,21 @@ if __name__ == "__main__":
     #クラスター間の接続
                 
 
-    # np.set_printoptions(threshold=np.inf, linewidth=200, suppress=True)
-    # print(resovoir_weight)10
     
-    # # --- 2. NetworkX グラフに変換 ---
+    # # ---  NetworkX グラフに変換 ---
     # G = nx.DiGraph()
     # for i in range(N):
     #     for j in range(N):
     #         w = resovoir_weight[i][j]
     #         if w != 0:
     #             G.add_edge(j, i, weight=w)  # j→i（pre→post）
-
-    # # --- 3. ノード配置（円形 or 自動レイアウト） ---
+    # #   ノード配置（円形 or 自動レイアウト） 
     # pos = nx.spring_layout(G, seed=seed)  # spring_layout / circular_layout など
-
-    # # --- 4. エッジ属性（色と太さ） ---
+    # #   エッジ属性（色と太さ） 
     # edges = G.edges(data=True)
     # edge_colors = ['red' if d['weight'] > 0 else 'blue' for (u, v, d) in edges]
     # edge_widths = [abs(d['weight']) for (u, v, d) in edges]
-
-    # # --- 5. 可視化 ---
+    # #   可視化 
     # plt.figure(num=1, figsize=(8, 8))
     # nx.draw_networkx_nodes(G, pos, node_size=5, node_color="lightgray")
     # nx.draw_networkx_edges(G, pos, edge_color=edge_colors, width=edge_widths, arrows=True, arrowstyle='-|>')
@@ -95,7 +91,10 @@ if __name__ == "__main__":
     dt = cell0.PARAM['dt']
     delay = np.random.randint(0.03//dt, 0.5//dt)  # delay for each neuron
     I=np.zeros((number_of_iterations, N))
-    I[int(0.05/dt):int(0.1/dt),range(0,N,100)] = 0.09
+    for i in range(10):
+        temp = 1*random.random()/dt
+        I[int(0.05/dt+temp):int(0.1/dt+temp),random.randint(0,N)] = 0.09
+    # I[int(0.05/dt):int(0.1/dt),0] = 0.09
     rasters = np.zeros((number_of_iterations, N))
     output = np.zeros((number_of_iterations+delay, N))
     cols = np.arange(output.shape[1])
@@ -111,7 +110,7 @@ if __name__ == "__main__":
         spike = np.where(v0[i] > 4, 1, 0)
         rasters[i] = np.where(spike-past_spike > 0, 1, 0)
         rows = delays + i+1
-        output[rows, cols] = 0.005*synapses_out(rasters[i])  # update output with synapse
+        output[rows, cols] = 0.005*synapses_out(rasters[i])  # 連続して発火したときに、シナプスの出力が重ね合わさり、発振してる、？
         next_input = np.dot(resovoir_weight, output[i])  # update input for next iteration
         past_spike = spike
     #print(output.shape)
@@ -134,7 +133,7 @@ if __name__ == "__main__":
     ax0.set_xticks([])
     ax1.plot([i*cell0.PARAM['dt'] for i in range(0, number_of_iterations)], output[:number_of_iterations,0])
     ax1.set_xlim(0, tmax)
-    ax1.set_ylabel("output")
+    ax1.set_ylabel("synapse output")
     ax1.set_xticks([])
     ax2.plot([i*cell0.PARAM['dt'] for i in range(0, number_of_iterations)], I[:,0], color="black")
     ax2.set_xlim(0, tmax)
@@ -145,7 +144,7 @@ if __name__ == "__main__":
     times = times * cell0.PARAM['dt']
     neuron_ids = neuron_ids + 1  # Adjust neuron IDs to start from 1
     plt.figure(figsize=(9, 2))
-    plt.scatter(times, neuron_ids, s=5, color='black')
+    plt.scatter(times, neuron_ids, s=1, color='black')
     plt.xlabel("time")
     plt.xlim(0, tmax)
     plt.ylabel("neuron ID")
