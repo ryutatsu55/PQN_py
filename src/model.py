@@ -1,4 +1,5 @@
 import numpy as np
+import cupy as cp
 class PQNModel:
     # available mode list
     MODE_LIST=['RSexci', 'RSinhi', 'FS', 'LTS', 'IB', 'EB', 'PB', 'Class2']
@@ -8,10 +9,10 @@ class PQNModel:
         self.N = N
         self.PARAM={}
         self.Y={}
-        self.state_variable_v=np.zeros(N)
-        self.state_variable_n=np.zeros(N)
-        self.state_variable_q=np.zeros(N)
-        self.state_variable_u=np.zeros(N)
+        self.state_variable_v=cp.zeros(N)
+        self.state_variable_n=cp.zeros(N)
+        self.state_variable_q=cp.zeros(N)
+        self.state_variable_u=cp.zeros(N)
         self.set_mode(mode)
 
     # set mode
@@ -44,9 +45,9 @@ class PQNModel:
         self.PARAM['epsq']=0.0693359375
         self.PARAM['rg']=0.0625
         self.PARAM['rh']=15.71875
-        self.state_variable_v=np.full(self.N, -4906)
-        self.state_variable_n=np.full(self.N, 27584)
-        self.state_variable_q=np.full(self.N, -3692)
+        self.state_variable_v=cp.full(self.N, -4906)
+        self.state_variable_n=cp.full(self.N, 27584)
+        self.state_variable_q=cp.full(self.N, -3692)
         self.BIT_WIDTH=18
         self.BIT_WIDTH_FRACTIONAL=10
         self.BIT_Y_SHIFT=20
@@ -95,13 +96,13 @@ class PQNModel:
     # calculate Δv for the RSexhi, RSinhi, FS, LTS, IB, and EB modes
     def dv0(self,I_float):
         B=self.BIT_Y_SHIFT
-        I=(I_float*2**self.BIT_WIDTH_FRACTIONAL).astype(int)
+        I=(I_float*2**self.BIT_WIDTH_FRACTIONAL)
         v=self.state_variable_v
         n=self.state_variable_n
         q=self.state_variable_q
-        vv = ((v * v) // (1 << self.BIT_WIDTH_FRACTIONAL)).astype(int)
+        vv = ((v * v) // (1 << self.BIT_WIDTH_FRACTIONAL))
         
-        v0 = np.where(
+        v0 = cp.where(
             v < 0,
             (self.Y['v_vv_S'] * vv>>B)+(self.Y['v_v_S'] * v>>B)+self.Y['v_c_S']+(self.Y['v_n'] * n>>B)+(self.Y['v_q'] * q>>B)+(self.Y['v_I'] * I>>B),
             (self.Y['v_vv_L'] * vv>>B)+(self.Y['v_v_L'] * v>>B)+self.Y['v_c_L']+(self.Y['v_n'] * n>>B)+(self.Y['v_q'] * q>>B)+(self.Y['v_I'] * I>>B)
@@ -115,7 +116,7 @@ class PQNModel:
         v=self.state_variable_v
         n=self.state_variable_n
         vv=(v*v >> self.BIT_WIDTH_FRACTIONAL).astype(int)
-        n0 = np.where(
+        n0 = cp.where(
             v<self.Y['rg'],
             (self.Y['n_vv_S']*vv >> B)+(self.Y['n_v_S']*v >> B)+self.Y['n_c_S']+(self.Y['n_n']*n >> B),
             (self.Y['n_vv_L']*vv >> B)+(self.Y['n_v_L']*v >> B)+self.Y['n_c_L']+(self.Y['n_n']*n >> B)
@@ -129,7 +130,7 @@ class PQNModel:
         v=self.state_variable_v
         q=self.state_variable_q
         vv=(v*v >> self.BIT_WIDTH_FRACTIONAL).astype(int)
-        q0 = np.where(
+        q0 = cp.where(
             v<self.Y['rh'],
             (self.Y['q_vv_S']*vv >> B)+(self.Y['q_v_S']*v >> B)+self.Y['q_c_S']+(self.Y['q_q']*q >> B),
             (self.Y['q_vv_L']*vv >> B)+(self.Y['q_v_L']*v >> B)+self.Y['q_c_L']+(self.Y['q_q']*q >> B)

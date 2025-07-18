@@ -12,10 +12,10 @@ class SingleExponentialSynapse:
         self.N = N
         self.dt = dt
         self.td = td
-        self.r = np.zeros(N)
+        self.r = cp.zeros(N)
 
     def initialize_states(self):
-        self.r = np.zeros(self.N)
+        self.r = cp.zeros(self.N)
 
     def __call__(self, spike):
         r = self.r*(1-self.dt/self.td) + spike/self.td
@@ -34,12 +34,12 @@ class DoubleExponentialSynapse:
         self.dt = dt
         self.td = td
         self.tr = tr
-        self.r = np.zeros(N)
-        self.hr = np.zeros(N)
+        self.r = cp.zeros(N)
+        self.hr = cp.zeros(N)
     
     def initialize_states(self):
-        self.r = np.zeros(self.N)
-        self.hr = np.zeros(self.N)
+        self.r = cp.zeros(self.N)
+        self.hr = cp.zeros(self.N)
         
     def __call__(self, spike):
         r = self.r*(1-self.dt/self.tr) + self.hr*self.dt 

@@ -1,5 +1,6 @@
 from src import PQNModel
 import numpy as np
+import cupy as cp
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
 from tqdm import tqdm
@@ -71,10 +72,16 @@ if __name__ == "__main__":
     # plt.savefig("network.png")
     # plt.show(block=False)
 
+    v0= cp.asarray(v0)
+    output = cp.asarray(output)
+    spike = cp.asarray(spike)
+    past_spike = cp.asarray(past_spike)
+    resovoir_weight = cp.asarray(resovoir_weight)
+
     # set step input
-    I=np.zeros((number_of_iterations, N))
+    I=cp.zeros((number_of_iterations, N))
     I[int(number_of_iterations/4):int(number_of_iterations/4*3)] = 0.09
-    next_input = np.zeros(N)
+    next_input = cp.zeros(N)
 
     # run simulatiion
     start = time.perf_counter()
@@ -82,12 +89,12 @@ if __name__ == "__main__":
         I[i] += next_input
         cell0.update(I[i])  # update cell state
         v0[i] = (cell0.get_membrane_potential())
-        spike = np.where(v0[i] > 4, 1, 0)
-        output[i] = synapses_out(np.where(spike-past_spike > 0, 1, 0))
+        spike = cp.where(v0[i] > 4, 1, 0)
+        output[i] = synapses_out(cp.where(spike-past_spike > 0, 1, 0))
         # tmp = np.where(spike-past_spike > 0, 1, 0)
         # if(tmp[1] == 1):
         #     print(f"Spike at iteration {i}, time {i * cell0.PARAM['dt']:.2f} s")
-        next_input = 0.004*np.dot(resovoir_weight, output[i])  # update input for next iteration
+        next_input = 0.004*cp.dot(resovoir_weight, output[i])  # update input for next iteration
         past_spike = spike
     #print(output.shape)
 
@@ -95,6 +102,10 @@ if __name__ == "__main__":
 
     end = time.perf_counter()
     print(f"processing time for 1ms simulation mas {(end - start)*1000} ms when reservoir_size was {N}")
+
+    v0 = cp.asnumpy(v0)
+    output = cp.asnumpy(output)
+    I = cp.asnumpy(I)
 
     # plot simulation result
     fig = plt.figure(num=2, figsize=(10,4))
