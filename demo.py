@@ -6,11 +6,12 @@ from tqdm import tqdm
 import time
 import networkx as nx
 from src.Synapses import DoubleExponentialSynapse
+from src.Synapses import tsodyks_markram
 import random
 
 if __name__ == "__main__":
     seed = int(random.random() * 1000)
-    # seed = 2  # random seed for reproducibility
+    # seed = 3  # random seed for reproducibility
     ##やることリスト
     #学習アルゴリズム追加
 
@@ -19,11 +20,12 @@ if __name__ == "__main__":
     N = int(input("number of neurons: "))
     cell0=PQNModel(mode='RSexci', N = N)
     # set a synapse
-    synapses_out = DoubleExponentialSynapse(N, dt=cell0.PARAM['dt'], td=1e-2, tr=5e-3)
+    synapses_out1 = tsodyks_markram(N, dt=cell0.PARAM['dt'])
+    synapses_out2 = DoubleExponentialSynapse(N, dt=cell0.PARAM['dt'], td=1e-2, tr=5e-3)
 
     #initialization
     # length of simulation [s]
-    tmax=1
+    tmax=10
     # set the number of iterations
     number_of_iterations=int(tmax/cell0.PARAM['dt'])
 
@@ -40,12 +42,14 @@ if __name__ == "__main__":
                 p = random.random()
                 if p < 0.05:  # pの確率で結合
                     if j<N/5+crust_idx*N/4:
-                        resovoir_weight[i][j] = 1*random.random()
+                        resovoir_weight[i][j] = 0.1*random.random() + 1
                         # resovoir_weight[i][j] = 1
                     else:
-                        resovoir_weight[i][j] = -1*random.random()  # 2割　抑制結合
+                        resovoir_weight[i][j] = -0.1*random.random() - 1  # 2割　抑制結合
+                        # resovoir_weight[i][j] = -1
         crust_idx += 1
 
+    #クラスター間の接続
     M = 4   # クラスタ間の接続数
     for hoge in range(M*4):
         i_range = (hoge*N/4)%N
@@ -56,13 +60,14 @@ if __name__ == "__main__":
         i = random.randint(int(i_range), int(i_range+N/4-1))
         j = random.randint(int(j_range), int(j_range+N/4-1))
         if (j%(N/4) < N/5):
-            resovoir_weight[i][j] = 1*random.random()
+            resovoir_weight[i][j] = 0.1*random.random()+1
         else:
-            resovoir_weight[i][j] = -1*random.random()
+            resovoir_weight[i][j] = -0.1*random.random()-1
 
-    #クラスター間の接続
-                
-
+    for i in range(N):
+        count = np.count_nonzero(resovoir_weight[i])
+        if count > 0:
+            resovoir_weight[i] = resovoir_weight[i] / count
     
     # # ---  NetworkX グラフに変換 ---
     # G = nx.DiGraph()
@@ -85,22 +90,22 @@ if __name__ == "__main__":
     # plt.axis('off')
     # plt.tight_layout()
     # plt.savefig("network.png")
-    # plt.show(block=False)
+    # # plt.show(block=False)
 
     # set step input
     dt = cell0.PARAM['dt']
-    delay = np.random.randint(0.03//dt, 0.5//dt)  # delay for each neuron
     I=np.zeros((number_of_iterations, N))
     for i in range(10):
-        temp = 1*random.random()/dt
+        temp = 0.9*random.random()/dt
         I[int(0.05/dt+temp):int(0.1/dt+temp),random.randint(0,N)] = 0.09
     # I[int(0.05/dt):int(0.1/dt),0] = 0.09
     rasters = np.zeros((number_of_iterations, N))
-    output = np.zeros((number_of_iterations+delay, N))
+    output = np.zeros((number_of_iterations+int(0.5//dt), N))
     cols = np.arange(output.shape[1])
     next_input = np.zeros(N)
-    # delays = np.random.randint(0, delay, size=N)  # delay for each neuron
-    delays = np.full(N, delay-1)  # uniform delay for all neurons
+    delays = np.random.randint(0.03//dt, 0.5//dt, size=N)  # delay for each neuron
+    # delay = np.random.randint(0.03//dt, 0.5//dt)  # delay for all neuron
+    # delays = np.full(N, delay-1)  # uniform delay for all neurons
     # run simulatiion
     start = time.perf_counter()
     for i in tqdm(range(number_of_iterations)):
@@ -110,7 +115,8 @@ if __name__ == "__main__":
         spike = np.where(v0[i] > 4, 1, 0)
         rasters[i] = np.where(spike-past_spike > 0, 1, 0)
         rows = delays + i+1
-        output[rows, cols] = 0.005*synapses_out(rasters[i])  # 連続して発火したときに、シナプスの出力が重ね合わさり、発振してる、？
+        output[rows, cols] = 0.0015*synapses_out2(2*synapses_out1(rasters[i]))   #[pA]
+        # output[rows, cols] = 15*synapses_out1(rasters[i])  # [nA]
         next_input = np.dot(resovoir_weight, output[i])  # update input for next iteration
         past_spike = spike
     #print(output.shape)
@@ -119,13 +125,14 @@ if __name__ == "__main__":
 
     end = time.perf_counter()
     print(f"processing time for {tmax}s simulation mas {(end - start)} s when reservoir_size was {N}")
+    print(f"seed value was {seed}")
 
     # plot simulation result
     fig = plt.figure(num=2, figsize=(10,4))
-    spec = gridspec.GridSpec(ncols=1, nrows=3, figure=fig, hspace=0.1, height_ratios=[4, 4, 1])
-    ax0 = fig.add_subplot(spec[0])
-    ax1 = fig.add_subplot(spec[1])
-    ax2 = fig.add_subplot(spec[2])
+    spec = gridspec.GridSpec(ncols=1, nrows=3, figure=fig, hspace=0.1, height_ratios=[1, 4, 4])
+    ax2 = fig.add_subplot(spec[0])
+    ax0 = fig.add_subplot(spec[1])
+    ax1 = fig.add_subplot(spec[2])
     times, neuron_ids = np.nonzero(rasters)
     ax0.plot([i*cell0.PARAM['dt'] for i in range(0, number_of_iterations)], v0[:,0])    
     ax0.set_xlim(0, tmax)
@@ -134,11 +141,12 @@ if __name__ == "__main__":
     ax1.plot([i*cell0.PARAM['dt'] for i in range(0, number_of_iterations)], output[:number_of_iterations,0])
     ax1.set_xlim(0, tmax)
     ax1.set_ylabel("synapse output")
-    ax1.set_xticks([])
+    ax2.set_xticks([])
     ax2.plot([i*cell0.PARAM['dt'] for i in range(0, number_of_iterations)], I[:,0], color="black")
     ax2.set_xlim(0, tmax)
-    ax2.set_xlabel("[s]")
+    ax1.set_xlabel("[s]")
     ax2.set_ylabel("I")
+    fig.savefig("single_neuron.png")
 
     times, neuron_ids = np.nonzero(rasters)
     times = times * cell0.PARAM['dt']
@@ -153,4 +161,4 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.show()
 
-    plt.savefig("demo.png")
+    plt.savefig("raster.png")
