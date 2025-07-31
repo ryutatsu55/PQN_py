@@ -103,7 +103,7 @@ if __name__ == "__main__":
     output = np.zeros((number_of_iterations+int(0.5//dt), N))
     cols = np.arange(output.shape[1])
     next_input = np.zeros(N)
-    delays = np.random.randint(0.03//dt, 0.5//dt, size=N)  # delay for each neuron
+    delays = np.random.randint(0.03//dt, 0.5//dt, size=N)  # delay for each neuron [ms]
     # delay = np.random.randint(0.03//dt, 0.5//dt)  # delay for all neuron
     # delays = np.full(N, delay-1)  # uniform delay for all neurons
     # run simulatiion
