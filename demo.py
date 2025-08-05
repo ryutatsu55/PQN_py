@@ -19,6 +19,10 @@ if __name__ == "__main__":
     # you can use RSexci, RSinhi, FS, LTS, IB, EB, PB, or Class2 mode
     N = int(input("number of neurons: "))
     cell0=PQNModel(mode='RSexci', N = N)
+    dt = cell0.PARAM['dt']
+    delays = np.random.randint(0.03//dt, 0.5//dt, size=N)  # delay for each neuron [ms]
+    # delay = np.random.randint(0.03//dt, 0.5//dt)  # delay for all neuron
+    # delays = np.full(N, delay-1)  # uniform delay for all neurons
     # set a synapse
     synapses_out1 = tsodyks_markram(N, dt=cell0.PARAM['dt'])
     synapses_out2 = DoubleExponentialSynapse(N, dt=cell0.PARAM['dt'], td=1e-2, tr=5e-3)
@@ -69,31 +73,31 @@ if __name__ == "__main__":
         if count > 0:
             resovoir_weight[i] = resovoir_weight[i] / count
     
-    # # ---  NetworkX グラフに変換 ---
-    # G = nx.DiGraph()
-    # for i in range(N):
-    #     for j in range(N):
-    #         w = resovoir_weight[i][j]
-    #         if w != 0:
-    #             G.add_edge(j, i, weight=w)  # j→i（pre→post）
-    # #   ノード配置（円形 or 自動レイアウト） 
-    # pos = nx.spring_layout(G, seed=seed)  # spring_layout / circular_layout など
-    # #   エッジ属性（色と太さ） 
-    # edges = G.edges(data=True)
-    # edge_colors = ['red' if d['weight'] > 0 else 'blue' for (u, v, d) in edges]
-    # edge_widths = [abs(d['weight']) for (u, v, d) in edges]
-    # #   可視化 
-    # plt.figure(num=1, figsize=(8, 8))
-    # nx.draw_networkx_nodes(G, pos, node_size=5, node_color="lightgray")
-    # nx.draw_networkx_edges(G, pos, edge_color=edge_colors, width=edge_widths, arrows=True, arrowstyle='-|>')
-    # plt.title("Reservoir Network Graph")
-    # plt.axis('off')
-    # plt.tight_layout()
+    # ---  NetworkX グラフに変換 ---
+    G = nx.DiGraph()
+    for i in range(N):
+        for j in range(N):
+            w = resovoir_weight[i][j]
+            if w != 0:
+                delay_ij = delays[j]
+                G.add_edge(j, i, weight=w, delay=delay_ij)  # j→i（pre→post）
+    #   ノード配置（円形 or 自動レイアウト） 
+    pos = nx.kamada_kawai_layout(G, weight='delay', scale=1)  # spring_layout / circular_layout など
+    #   エッジ属性（色と太さ） 
+    edges = G.edges(data=True)
+    edge_colors = ['red' if d['weight'] > 0 else 'blue' for (u, v, d) in edges]
+    edge_widths = [abs(d['weight']) for (u, v, d) in edges]
+    #   可視化 
+    plt.figure(num=1, figsize=(8, 8))
+    nx.draw_networkx_nodes(G, pos, node_size=5, node_color="lightgray")
+    nx.draw_networkx_edges(G, pos, edge_color=edge_colors, width=edge_widths, arrows=True, arrowstyle='-|>')
+    plt.title("Reservoir Network Graph")
+    plt.axis('off')
+    plt.tight_layout()
     # plt.savefig("network.png")
-    # # plt.show(block=False)
+    plt.show(block=False)
 
     # set step input
-    dt = cell0.PARAM['dt']
     I=np.zeros((number_of_iterations, N))
     for i in range(10):
         temp = 0.9*random.random()/dt
@@ -103,9 +107,7 @@ if __name__ == "__main__":
     output = np.zeros((number_of_iterations+int(0.5//dt), N))
     cols = np.arange(output.shape[1])
     next_input = np.zeros(N)
-    delays = np.random.randint(0.03//dt, 0.5//dt, size=N)  # delay for each neuron [ms]
-    # delay = np.random.randint(0.03//dt, 0.5//dt)  # delay for all neuron
-    # delays = np.full(N, delay-1)  # uniform delay for all neurons
+
     # run simulatiion
     start = time.perf_counter()
     for i in tqdm(range(number_of_iterations)):
@@ -115,8 +117,8 @@ if __name__ == "__main__":
         spike = np.where(v0[i] > 4, 1, 0)
         rasters[i] = np.where(spike-past_spike > 0, 1, 0)
         rows = delays + i+1
-        output[rows, cols] = 0.0015*synapses_out2(2*synapses_out1(rasters[i]))   #[pA]
-        # output[rows, cols] = 15*synapses_out1(rasters[i])  # [nA]
+        # output[rows, cols] = 0.001*synapses_out2(2*synapses_out1(rasters[i]))   #[pA]
+        output[rows, cols] = synapses_out1(rasters[i])  # [nA]
         next_input = np.dot(resovoir_weight, output[i])  # update input for next iteration
         past_spike = spike
     #print(output.shape)
