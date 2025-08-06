@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
-import cupy as cp
 
 class SingleExponentialSynapse:
     def __init__(self, N, dt=1e-4, td=5e-3):

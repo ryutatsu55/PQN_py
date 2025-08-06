@@ -1,4 +1,5 @@
 from src import PQNModel
+from src import LIF
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
@@ -18,16 +19,20 @@ if __name__ == "__main__":
     # you can use RSexci, RSinhi, FS, LTS, IB, EB, PB, or Class2 mode
     # N = int(input("number of neurons: "))
     N=1
-    cell0=PQNModel(mode='RSexci', N = N)
+    # cell0=PQNModel(mode='RSexci', N = N)
+    cell0=LIF(N=N)
+    dt = 0.0001
+    # dt = cell0.PARAM['dt']
+
     # set a synapse
-    synapses_out1 = tsodyks_markram(N, dt=cell0.PARAM['dt'])
-    synapses_out2 = DoubleExponentialSynapse(N, dt=cell0.PARAM['dt'], td=1e-2, tr=5e-3)
+    synapses_out1 = tsodyks_markram(N, dt=dt)
+    synapses_out2 = DoubleExponentialSynapse(N, dt=dt, td=1e-2, tr=5e-3)
 
     #initialization
     # length of simulation [s]
     tmax=3
     # set the number of iterations
-    number_of_iterations=int(tmax/cell0.PARAM['dt'])
+    number_of_iterations=int(tmax/dt)
 
     v0= np.zeros((number_of_iterations, N))
     spike = np.zeros(N)
@@ -36,10 +41,9 @@ if __name__ == "__main__":
 
 
     # set step input
-    dt = cell0.PARAM['dt']
     delay = int(0.1/dt)
     I=np.zeros((number_of_iterations, N))
-    I[int(0.0/dt):int(0.1/dt),0] = 0.09
+    I[int(0.0/dt):int(0.1/dt),0] = 0.13
     rasters = np.zeros((number_of_iterations, N))
     output = np.zeros((number_of_iterations+delay, N))
     cols = np.arange(output.shape[1])
@@ -50,46 +54,36 @@ if __name__ == "__main__":
     start = time.perf_counter()
     for i in tqdm(range(number_of_iterations)):
         I[i] += next_input
-        cell0.update(I[i])  # update cell state
-        v0[i] = (cell0.get_membrane_potential())
-        spike = np.where(v0[i] > 4, 1, 0)
-        rasters[i] = np.where(spike-past_spike > 0, 1, 0)
+        rasters[i], v0[i] = cell0.calc(inputs=I[i], itr=i)  # update cell state
         rows = delays + i+1
-        
-        output[rows, cols] = 0.0015*synapses_out2(2*synapses_out1(rasters[i]))   #[pA]
-        # output[rows, cols] = 15*synapses_out1(rasters[i])  # [nA]
+        output[rows, cols] = 15*synapses_out1(rasters[i])  # [nA]
         next_input = output[i]  # update input for next iteration
-        past_spike = spike
-    #print(output.shape)
-
-
-
     end = time.perf_counter()
     print(f"processing time for {tmax}s simulation mas {(end - start)} s when reservoir_size was {N}")
 
     # plot simulation result
     fig = plt.figure(num=2, figsize=(10,4))
-    spec = gridspec.GridSpec(ncols=1, nrows=3, figure=fig, hspace=0.1, height_ratios=[4, 4, 1])
-    ax0 = fig.add_subplot(spec[0])
-    ax1 = fig.add_subplot(spec[1])
-    ax2 = fig.add_subplot(spec[2])
+    spec = gridspec.GridSpec(ncols=1, nrows=3, figure=fig, hspace=0.1, height_ratios=[1, 4, 4])
+    ax2 = fig.add_subplot(spec[0])
+    ax0 = fig.add_subplot(spec[1])
+    ax1 = fig.add_subplot(spec[2])
     times, neuron_ids = np.nonzero(rasters)
-    ax0.plot([i*cell0.PARAM['dt'] for i in range(0, number_of_iterations)], v0[:,0])    
+    ax0.plot([i*dt for i in range(0, number_of_iterations)], v0[:,0])    
     ax0.set_xlim(0, tmax)
     ax0.set_ylabel("v")
     ax0.set_xticks([])
-    ax1.plot([i*cell0.PARAM['dt'] for i in range(0, number_of_iterations)], output[:number_of_iterations,0])
+    ax1.plot([i*dt for i in range(0, number_of_iterations)], output[:number_of_iterations,0])
     ax1.set_xlim(0, tmax)
     ax1.set_ylabel("synapse output")
-    ax1.set_xticks([])
-    ax2.plot([i*cell0.PARAM['dt'] for i in range(0, number_of_iterations)], I[:,0], color="black")
+    ax2.set_xticks([])
+    ax2.plot([i*dt for i in range(0, number_of_iterations)], I[:,0], color="black")
     ax2.set_xlim(0, tmax)
-    ax2.set_xlabel("[s]")
+    ax1.set_xlabel("[s]")
     ax2.set_ylabel("I")
     fig.savefig("single_neuron.png")
 
     times, neuron_ids = np.nonzero(rasters)
-    times = times * cell0.PARAM['dt']
+    times = times * dt
     neuron_ids = neuron_ids + 1  # Adjust neuron IDs to start from 1
     plt.figure(figsize=(9, 2))
     plt.scatter(times, neuron_ids, s=1, color='black')
