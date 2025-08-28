@@ -50,7 +50,7 @@ class DoubleExponentialSynapse:
         return r    #[pA]
 
 class tsodyks_markram:
-    def __init__(self, N, dt=0.0001, tau_rec=0.8, tau_inact=3e-3, U=0.5):
+    def __init__(self, N, dt=0.0001, tau_rec=0.8, tau_inact=0.003, U=0.6):
         """
         Args:
             tau_rec (float): Synaptic recovery time constant
@@ -59,9 +59,9 @@ class tsodyks_markram:
         """
         self.N = N
         self.dt = dt
-        self.tau_rec = tau_rec
-        self.tau_inact = tau_inact
-        self.U = U
+        self.tau_rec = np.full(N, tau_rec)
+        self.tau_inact = np.full(N, tau_inact)
+        self.U = np.full(N, U)
         self.x = np.full(N, 1.0)
         self.z = np.zeros(N)
         self.y = np.zeros(N)
@@ -79,8 +79,8 @@ class tsodyks_markram:
 
         idx = np.where(spike == 1)[0]
         if len(idx) > 0:
-            dx[idx] -= self.U * self.x[idx]
-            dy[idx] += self.U * self.x[idx]
+            dx[idx] -= self.U[idx] * self.x[idx]
+            dy[idx] += self.U[idx] * self.x[idx]
             # print("------------------------")
             # print("Synaptic output:", self.y[0]+dy[0])
         

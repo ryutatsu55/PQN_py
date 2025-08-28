@@ -1,5 +1,6 @@
 from src import PQNModel
 from src import LIF
+from src import PSP_test
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
@@ -25,12 +26,12 @@ if __name__ == "__main__":
     # dt = cell0.PARAM['dt']
 
     # set a synapse
-    synapses_out1 = tsodyks_markram(N, dt=dt)
+    synapses_out1 = tsodyks_markram(N, dt=dt, tau_rec=0.1, U=0.1)
     synapses_out2 = DoubleExponentialSynapse(N, dt=dt, td=1e-2, tr=5e-3)
 
     #initialization
     # length of simulation [s]
-    tmax=3
+    tmax=2
     # set the number of iterations
     number_of_iterations=int(tmax/dt)
 
@@ -41,22 +42,23 @@ if __name__ == "__main__":
 
 
     # set step input
-    delay = int(0.1/dt)
+    delay = int(0.001/dt)
+    delays = np.full(N, delay-1)  # uniform delay for all neurons
+    # delays = np.random.randint(0, delay, size=N)  # delay for each neuron
     I=np.zeros((number_of_iterations, N))
-    I[int(0.0/dt):int(0.1/dt),0] = 0.13
+    I[int(0.0/dt):int(0.075/dt),0] = 0.13
     rasters = np.zeros((number_of_iterations, N))
     output = np.zeros((number_of_iterations+delay, N))
     cols = np.arange(output.shape[1])
     next_input = np.zeros(N)
-    # delays = np.random.randint(0, delay, size=N)  # delay for each neuron
-    delays = np.full(N, delay-1)  # uniform delay for all neurons
+
     # run simulatiion
     start = time.perf_counter()
     for i in tqdm(range(number_of_iterations)):
         I[i] += next_input
         rasters[i], v0[i] = cell0.calc(inputs=I[i], itr=i)  # update cell state
         rows = delays + i+1
-        output[rows, cols] = 15*synapses_out1(rasters[i])  # [nA]
+        output[rows, cols] = 70*synapses_out1(rasters[i])  # [nA]
         next_input = output[i]  # update input for next iteration
     end = time.perf_counter()
     print(f"processing time for {tmax}s simulation mas {(end - start)} s when reservoir_size was {N}")

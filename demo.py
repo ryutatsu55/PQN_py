@@ -12,7 +12,7 @@ import random
 
 if __name__ == "__main__":
     seed = int(random.random() * 1000)
-    # seed = 3  # random seed for reproducibility
+    # seed = 453  # random seed for reproducibility
     ##やることリスト
     #学習アルゴリズム追加
 
@@ -29,7 +29,7 @@ if __name__ == "__main__":
 
     #initialization
     # length of simulation [s]
-    tmax=3
+    tmax=10
     # set the number of iterations
     number_of_iterations=int(tmax/dt)
 
@@ -100,7 +100,7 @@ if __name__ == "__main__":
     I=np.zeros((number_of_iterations, N))
     for i in range(100):
         temp = 0.9*random.random()/dt
-        I[int(0.05/dt+temp):int(0.1/dt+temp),random.randint(0,N)] = 0.13
+        I[int(temp):int(0.1/dt+temp),random.randint(0,N-1)] = 0.13
     # I[int(0.05/dt):int(0.1/dt),0] = 0.13
     rasters = np.zeros((number_of_iterations, N))
     output = np.zeros((number_of_iterations+int(0.5//dt), N))
@@ -116,9 +116,11 @@ if __name__ == "__main__":
         I[i] += next_input
         rasters[i], v0[i] = cell0.calc(inputs=I[i], itr=i)  # update cell state
         rows = delays + i
-        output[rows, cols] = 15*synapses_out1(rasters[i])  # [nA]
+        # output[rows, cols] = 0.0015*synapses_out2(2*synapses_out1(rasters[i]))   #[pA]
+        output[rows, cols] = 35*synapses_out1(rasters[i])  # [nA]
         next_input = np.dot(resovoir_weight, output[i])  # update input for next iteration
     end = time.perf_counter()
+
     print(f"processing time for {tmax}s simulation mas {(end - start)} s when reservoir_size was {N}")
     print(f"seed value was {seed}")
 
@@ -146,8 +148,11 @@ if __name__ == "__main__":
     times, neuron_ids = np.nonzero(rasters)
     times = times * dt
     neuron_ids = neuron_ids + 1  # Adjust neuron IDs to start from 1
-    plt.figure(figsize=(9, 2))
-    plt.scatter(times, neuron_ids, s=1, color='black')
+    cluster_colors = ['red', 'blue', 'green', 'orange']
+    cluster_id = ((neuron_ids - 1) // (N // 4))  # 0,1,2,3 のクラスタID
+    colors = [cluster_colors[c % 4] for c in cluster_id]
+    plt.figure(figsize=(9, 5))
+    plt.scatter(times, neuron_ids, s=1, color=colors)
     plt.xlabel("time")
     plt.xlim(0, tmax)
     plt.ylabel("neuron ID")
