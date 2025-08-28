@@ -37,21 +37,29 @@ if __name__ == "__main__":
     random.seed(seed) # for reproducibility
 
     crust_idx = 0
+    G = 0.05
+    p = 0.05
     while crust_idx != 4:
-        for i in range(int(crust_idx*N/4), int((crust_idx+1)*N/4)):
-            for j in range(int(crust_idx*N/4), int((crust_idx+1)*N/4)):
-                p = random.random()
-                if p < 0.05:  # pの確率で結合
-                    if j<N/5+crust_idx*N/4:
-                        resovoir_weight[i][j] = 0.1*random.random() + 1
-                        # resovoir_weight[i][j] = 1
-                    else:
-                        resovoir_weight[i][j] = -0.1*random.random() - 1  # 2割　抑制結合
-                        # resovoir_weight[i][j] = -1
+        i1 = int(crust_idx * N / 4)
+        i2 = int((crust_idx + 1) * N / 4)
+        resovoir_weight[i1:i2, i1:i2] = ((G * np.random.randn(N//4, N//4)) / (np.sqrt(N) * p) + 1) * (np.random.rand(N//4, N//4) < p)
+        # print(resovoir_weight[i1:i2, i1:i2])
         crust_idx += 1
+
+    # weights = G * np.random.randn(100000) / (np.sqrt(N) * p) + 1
+    # plt.figure(figsize=(8, 4))
+    # plt.hist(weights, bins=30, color='skyblue', edgecolor='black', density=True)
+    # plt.title("Distribution of G * randn(N) / (sqrt(N) * p) + 1")
+    # plt.xlabel("Weight Value")
+    # plt.ylabel("Probability Density")
+    # plt.tight_layout()
+    # plt.savefig("weight_distribution.png")
+    # plt.show()
 
     #クラスター間の接続
     M = 4
+    G = 0.001
+    p = 0.001
     for hoge in range(M):
         i_range1 = int((hoge*N/4)%N)
         i_range2 = int((hoge+1)*N/4)
@@ -61,14 +69,18 @@ if __name__ == "__main__":
         j_range2 = int((hoge+2)*N/4)
         if j_range2 > N:
             j_range2 = j_range2 % N
-        for i in range(i_range1, i_range2):
-            for j in range(j_range1, j_range2):
-                p = random.random()
-                if p < 0.001:  # pの確率で結合
-                    if (j%(N/4) < N/5):
-                        resovoir_weight[i][j] = 0.1*random.random()+1
-                    else:
-                        resovoir_weight[i][j] = -0.1*random.random()-1
+        resovoir_weight[i_range1:i_range2, j_range1:j_range2] = ((G * np.random.randn(N//4, N//4)) / (np.sqrt(N) * p) + 1) * (np.random.rand(N//4, N//4) < p)
+         
+    # weights = G * np.random.randn(100000) / (np.sqrt(N) * p) + 1
+    # plt.figure(figsize=(8, 4))
+    # plt.hist(weights, bins=30, color='skyblue', edgecolor='black', density=True)
+    # plt.title("Distribution of G * randn(N) / (sqrt(N) * p) + 1")
+    # plt.xlabel("Weight Value")
+    # plt.ylabel("Probability Density")
+    # plt.tight_layout()
+    # plt.savefig("weight_distribution.png")
+    # plt.show()
+
     for hoge in range(M):
         i_range1 = int(((hoge+1)*N/4)%N)
         i_range2 = int((hoge+2)*N/4)
@@ -78,46 +90,47 @@ if __name__ == "__main__":
         j_range2 = int((hoge+1)*N/4)
         if j_range2 > N:
             j_range2 = j_range2 % N
-        for i in range(i_range1, i_range2):
-            for j in range(j_range1, j_range2):
-                p = random.random()
-                if p < 0.001:  # pの確率で結合
-                    if (j%(N/4) < N/5):
-                        resovoir_weight[i][j] = 0.1*random.random()+1
-                    else:
-                        resovoir_weight[i][j] = -0.1*random.random()-1
-    # resovoir_weight[0][0] = 1.0  # 自己結合を強化
+        resovoir_weight[i_range1:i_range2, j_range1:j_range2] = ((G * np.random.randn(N//4, N//4)) / (np.sqrt(N) * p) + 1) * (np.random.rand(N//4, N//4) < p)
+
+    base_mask = np.ones((N, int(N/4)))
+    base_mask[:, N//5:] = -1
+    mask = np.hstack([base_mask for _ in range(4)])
+    resovoir_weight = resovoir_weight * mask
+    
+    # 正規化と自己結合強化
     for i in range(N):
         count = np.count_nonzero(resovoir_weight[i])
         if count > 0:
             resovoir_weight[i] = resovoir_weight[i] / count
+        if resovoir_weight[i][i] != 0 and i%(N//4) < N//5:
             resovoir_weight[i][i] = 4 * count * resovoir_weight[i][i]  # 自己結合を強化
-        if resovoir_weight[i][i] != 0:
             synapses_out1.U[i] = 0.1
             synapses_out1.tau_rec[i] = 0.1
 
-    # # ---  NetworkX グラフに変換 ---
-    # G = nx.DiGraph()
-    # for i in range(N):
-    #     for j in range(N):
-    #         w = resovoir_weight[i][j]
-    #         if w != 0:
-    #             G.add_edge(j, i, weight=w)  # j→i（pre→post）
-    # #   ノード配置（円形 or 自動レイアウト） 
-    # pos = nx.spring_layout(G, seed=seed)  # spring_layout / circular_layout など
-    # #   エッジ属性（色と太さ） 
-    # edges = G.edges(data=True)
-    # edge_colors = ['red' if d['weight'] > 0 else 'blue' for (u, v, d) in edges]
-    # edge_widths = [abs(d['weight']) for (u, v, d) in edges]
-    # #   可視化 
-    # plt.figure(num=1, figsize=(8, 8))
-    # nx.draw_networkx_nodes(G, pos, node_size=5, node_color="lightgray")
-    # nx.draw_networkx_edges(G, pos, edge_color=edge_colors, width=edge_widths, arrows=True, arrowstyle='-|>')
-    # plt.title("Reservoir Network Graph")
-    # plt.axis('off')
-    # plt.tight_layout()
-    # plt.savefig("network.png")
-    # plt.show(block=False)
+    # print(resovoir_weight)
+
+    # ---  NetworkX グラフに変換 ---
+    G = nx.DiGraph()
+    for i in range(N):
+        for j in range(N):
+            w = resovoir_weight[i][j]
+            if w != 0:
+                G.add_edge(j, i, weight=w)  # j→i（pre→post）
+    #   ノード配置（円形 or 自動レイアウト） 
+    pos = nx.spring_layout(G, seed=seed)  # spring_layout / circular_layout など
+    #   エッジ属性（色と太さ） 
+    edges = G.edges(data=True)
+    edge_colors = ['red' if d['weight'] > 0 else 'blue' for (u, v, d) in edges]
+    edge_widths = [abs(d['weight']) for (u, v, d) in edges]
+    #   可視化 
+    plt.figure(num=1, figsize=(8, 8))
+    nx.draw_networkx_nodes(G, pos, node_size=5, node_color="lightgray")
+    nx.draw_networkx_edges(G, pos, edge_color=edge_colors, width=edge_widths, arrows=True, arrowstyle='-|>')
+    plt.title("Reservoir Network Graph")
+    plt.axis('off')
+    plt.tight_layout()
+    plt.savefig("network.png")
+    plt.show(block=False)
 
     # set step input
     I=np.zeros((number_of_iterations, N))
@@ -185,7 +198,8 @@ if __name__ == "__main__":
     plt.savefig("raster.png")
 
     plt.figure(figsize=(8, 6))
-    im = plt.imshow(resovoir_weight, aspect='auto', cmap='jet')  # 'bwr'は青-白-赤
+    max_abs = np.max(np.abs(resovoir_weight))
+    im = plt.imshow(resovoir_weight, aspect='auto', cmap='bwr', vmin=-max_abs, vmax=max_abs)  # 0が白になる
     plt.colorbar(im, label='Weight Value')
     plt.title('Reservoir Weight Matrix')
     plt.xlabel('Pre Neuron')
