@@ -177,7 +177,7 @@ class LIF:
         self.th = th
         self.tc = tc
         self.peak = peak
-        self.R = 100    #[mV/nA]
+        self.R = 100    #[mV/nA, MΩ]
         self.v = np.full(N, rest, dtype=np.float32)  # 初期膜電位
         self.tlast = np.full(N, tlast, dtype=np.float32)  # 最後に発火した時刻
 
@@ -218,7 +218,7 @@ class PSP_test:
         rest: float = 0,
         ref: float = 3,
         th: float = -55,
-        tc: float = 40,
+        tc: float = 60,
         peak: float = 20,
         i: float = 0,
         tlast: float = 0,
@@ -239,7 +239,7 @@ class PSP_test:
         self.th = th
         self.tc = tc
         self.peak = peak
-        self.R = 100    #[mV/nA]
+        self.R = 1000    #[mV/nA, MΩ]
         self.v = np.full(N, rest, dtype=np.float32)  # 初期膜電位
         self.tlast = np.full(N, tlast, dtype=np.float32)  # 最後に発火した時刻
 

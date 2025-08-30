@@ -50,7 +50,7 @@ class DoubleExponentialSynapse:
         return r    #[pA]
 
 class tsodyks_markram:
-    def __init__(self, N, dt=0.0001, tau_rec=0.8, tau_inact=0.003, U=0.6):
+    def __init__(self, N, dt=0.0001, tau_rec=0.8, tau_inact=0.003, tau_faci=0.53, U=0.6, U_1=0.03):
         """
         Args:
             tau_rec (float): Synaptic recovery time constant
@@ -61,12 +61,16 @@ class tsodyks_markram:
         self.dt = dt
         self.tau_rec = np.full(N, tau_rec)
         self.tau_inact = np.full(N, tau_inact)
+        self.tau_faci = np.full(N, tau_faci)
         self.U = np.full(N, U)
         self.x = np.full(N, 1.0)
         self.z = np.zeros(N)
         self.y = np.zeros(N)
+        self.mask_faci = np.zeros(N)
+        self.last_spike_time = np.zeros(N)
+        self.U_1  = np.full(N, U_1)
 
-    def __call__(self, spike):
+    def __call__(self, spike, itr):
         """
         spike_train: 1D array of 0 or 1 (1=spike)
         dt: time step (ms)
@@ -78,9 +82,16 @@ class tsodyks_markram:
         dz = (self.y/self.tau_inact - self.z/self.tau_rec) * self.dt
 
         idx = np.where(spike == 1)[0]
+        idx_in = np.where(spike*self.mask_faci  == 1)[0]
         if len(idx) > 0:
+            if len(idx_in) > 0:
+                self.U[idx_in] = self.U[idx_in] * (1-self.U_1[idx_in]) * np.exp(-(itr*self.dt-self.last_spike_time[idx_in])/self.tau_faci[idx_in]) + self.U_1[idx_in]
+                self.last_spike_time[idx_in] = itr*self.dt
+
             dx[idx] -= self.U[idx] * self.x[idx]
             dy[idx] += self.U[idx] * self.x[idx]
+
+
             # print("------------------------")
             # print("Synaptic output:", self.y[0]+dy[0])
         
