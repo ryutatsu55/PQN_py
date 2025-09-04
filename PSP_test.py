@@ -47,9 +47,9 @@ if __name__ == "__main__":
     # run simulatiion
     start = time.perf_counter()
     for i in tqdm(range(number_of_iterations)):
-        I[i] += next_input
+        I[i] += next_input.flatten()
         v0[i] = cell0.calc(inputs=I[i], itr=i)  # update cell state
-        next_input = 1.54 * synapses_out1(rasters[i], i)  # [nA]
+        next_input = 1.54 * synapses_out1(rasters[i])  # [nA]
     end = time.perf_counter()
     print(f"processing time for {tmax}s simulation mas {(end - start)} s when reservoir_size was {N}")
 

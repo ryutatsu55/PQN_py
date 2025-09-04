@@ -59,45 +59,45 @@ class tsodyks_markram:
         """
         self.N = N
         self.dt = dt
-        self.tau_rec = np.full(N, tau_rec)
-        self.tau_inact = np.full(N, tau_inact)
-        self.tau_faci = np.full(N, tau_faci)
-        self.U = np.full(N, U)
-        self.x = np.full(N, 1.0)
-        self.z = np.zeros(N)
-        self.y = np.zeros(N)
-        self.mask_faci = np.zeros(N)
-        self.last_spike_time = np.zeros(N)
-        self.U_1  = np.full(N, U_1)
+        self.tau_rec = np.full((N,N), tau_rec)
+        self.tau_inact = np.full((N,N), tau_inact)
+        self.tau_faci = np.full((N,N), tau_faci)
+        self.U = np.full((N,N), U)
+        self.x = np.full((N,N), 1.0)
+        self.z = np.zeros((N,N))
+        self.y = np.zeros((N,N))
+        self.mask_faci = np.zeros((N,N), dtype=bool)
+        self.mask = np.zeros((N,N), dtype=bool)
+        self.U_1  = np.full((N,N), U_1)
+        self.dx = np.zeros((N,N))
+        self.dy = np.zeros((N,N))
+        self.dz = np.zeros((N,N))
+        self.dU = np.zeros((N,N))
 
-    def __call__(self, spike, itr):
+    def __call__(self, spike):
         """
         spike_train: 1D array of 0 or 1 (1=spike)
         dt: time step (ms)
         Returns: synaptic output over time
         """
-    
-        dx = self.z/self.tau_rec * self.dt
-        dy = -self.y/self.tau_inact * self.dt
-        dz = (self.y/self.tau_inact - self.z/self.tau_rec) * self.dt
 
-        idx = np.where(spike == 1)[0]
-        idx_in = np.where(spike*self.mask_faci  == 1)[0]
-        if len(idx) > 0:
-            if len(idx_in) > 0:
-                self.U[idx_in] = self.U[idx_in] * (1-self.U_1[idx_in]) * np.exp(-(itr*self.dt-self.last_spike_time[idx_in])/self.tau_faci[idx_in]) + self.U_1[idx_in]
-                self.last_spike_time[idx_in] = itr*self.dt
+        self.dx = self.z/self.tau_rec * self.dt
+        self.dy = -self.y/self.tau_inact * self.dt
+        self.dz = (self.y/self.tau_inact - self.z/self.tau_rec) * self.dt
+        self.dU[self.mask_faci] = -self.U[self.mask_faci]/self.tau_faci[self.mask_faci] * self.dt
 
-            dx[idx] -= self.U[idx] * self.x[idx]
-            dy[idx] += self.U[idx] * self.x[idx]
-
-
-            # print("------------------------")
-            # print("Synaptic output:", self.y[0]+dy[0])
+        idx = np.where(spike * self.mask == 1)
+        idx_in = np.where((spike * self.mask_faci) == 1)
+        if idx_in[0].size > 0:
+            self.dU[idx_in] += self.U_1[idx_in] * (1.0 - self.U[idx_in])
+        self.U[self.mask_faci] += self.dU[self.mask_faci]
+        if idx[0].size > 0:
+            self.dx[idx] -= self.U[idx] * self.x[idx]
+            self.dy[idx] += self.U[idx] * self.x[idx]
         
-        self.x += dx
-        self.y += dy
-        self.z += dz
+        self.x += self.dx
+        self.y += self.dy
+        self.z += self.dz
         
         return self.y
     

@@ -9,11 +9,13 @@ import networkx as nx
 from src.Synapses import DoubleExponentialSynapse
 from src.Synapses import tsodyks_markram
 import random
+from line_profiler import LineProfiler
 
-if __name__ == "__main__":
-    # seed = int(random.random() * 1000)
 
-    seed = 890
+def main():
+    SEED = int(random.random() * 1000)
+
+    # SEED = 890
 
     # set a PQN cell
     N = int(input("number of neurons: "))
@@ -24,14 +26,88 @@ if __name__ == "__main__":
     synapses_out1 = tsodyks_markram(N, dt=dt, tau_rec=0.5, U=0.5)
 
     # ---- initialization ----
-    tmax=10    # length of simulation [s]
+    tmax=3    # length of simulation [s]
     number_of_iterations=int(tmax/dt)
-    v0= np.zeros((number_of_iterations, N))
+    v0= np.zeros((number_of_iterations, N), dtype='float16')
     spike = np.zeros(N)
     resovoir_weight = np.zeros((N, N))
-    random.seed(seed) # for reproducibility
+    resovoir_origin = np.zeros((N, N))
+    random.seed(SEED) # for reproducibility
+    np.random.seed(SEED)
+    num = 0
 
     # --- Create reservoir weights with clustered structure ---
+    resovoir_origin, mask = create_reservoir_matrix(N)
+
+    # ---- 重み行列の可視化 ----
+    visualize_matrix(resovoir_origin, num)
+    num += 1
+
+    resovoir_weight = np.copy(resovoir_origin)
+    # 正規化と自己結合強化
+    for i in range(N):
+        count = np.count_nonzero(resovoir_weight[i])
+        if count > 0:
+            resovoir_weight[i] = resovoir_weight[i] / count
+        if resovoir_weight[i][i] != 0 and i%(N//4) < N//5:
+            resovoir_weight[i][i] = 2 * count * resovoir_weight[i][i]  # 自己結合を強化
+            synapses_out1.U[i][i] = 0.1
+            synapses_out1.tau_rec[i][i] = 0.1
+
+    synapses_out1.mask = mask != 0
+    synapses_out1.mask_faci = mask == -1
+    synapses_out1.U[mask == -1] = 0
+
+    # ----  NetworkX グラフに変換 ----
+    show_network(resovoir_weight, N, SEED, num)
+    num += 1
+
+    # ---- set step input ----
+    I=np.zeros((number_of_iterations, N))
+    for i in range(100):
+        temp = 0.9*random.random()/dt
+        I[int(temp):int(0.1/dt+temp),random.randint(0,N-1)] = 0.13
+    # I[int(0.05/dt):int(0.15/dt),0] = 0.13
+    rasters = np.zeros((number_of_iterations, N), dtype=bool)
+    synapses_spike = np.zeros((13, N, N), dtype=bool)
+    output = np.zeros((number_of_iterations+int(0.5//dt), N))
+    next_input = np.zeros(N)
+    delays = np.random.randint(8, 13, size=(N,N))  # delay for each neuron
+    # delays = np.vstack([delays for _ in range(N)])  # shape (N, N)
+    col = np.arange(N).reshape(N,1)
+    resovoir_weight = resovoir_weight * 70  # 重みのスケーリング
+
+    # ---- RUN SIMULATION ----
+    start = time.perf_counter()
+    for i in tqdm(range(number_of_iterations)):
+        I[i] += next_input
+        rasters[i], v0[i] = cell0.calc(inputs=I[i], itr=i)  # update cell state
+        idx=np.where(rasters[i])[0]
+        arrival_time = delays[:, idx]
+        cols = np.repeat(col, len(idx), axis=1)
+        idx = np.vstack([idx for _ in range(N)])
+        synapses_spike[arrival_time, cols, idx] = 1
+        next_input = np.sum(synapses_out1(synapses_spike[0]) * resovoir_weight, axis=1) # [nA]
+        synapses_spike = np.roll(synapses_spike, -1, axis=0)
+        synapses_spike[-1] = 0
+        output[i] = next_input
+    end = time.perf_counter()
+
+    print(f"processing time for {tmax}s simulation mas {(end - start)} s when reservoir_size was {N}")
+    print(f"seed value was {SEED}")
+
+    # ---- plot simulation result ----
+    plot_single_neuron(0, dt, tmax, number_of_iterations, I, v0, output, rasters, num)
+    num += 1
+
+    plot_raster(dt, tmax, rasters, N, num)
+    num += 1
+
+    plt.show()
+
+
+def create_reservoir_matrix(N):
+    resovoir_weight = np.zeros((N, N))
     crust_idx = 0
     G = 0.05
     p = 0.05
@@ -72,11 +148,14 @@ if __name__ == "__main__":
     base_mask[:, N//5:] = -1
     mask = np.hstack([base_mask for _ in range(4)])
     resovoir_weight = resovoir_weight * mask
+    mask = (resovoir_weight != 0) * mask
 
-    # ---- 重み行列の可視化 ----
-    plt.figure(num=1, figsize=(8, 6))
-    max_abs = np.max(np.abs(resovoir_weight))
-    im = plt.imshow(resovoir_weight, aspect='auto', cmap='plasma', vmin=-max_abs, vmax=max_abs)
+    return resovoir_weight, mask
+
+def visualize_matrix(matrix, num):
+    plt.figure(num=num, figsize=(8, 6))
+    max_abs = np.max(np.abs(matrix))
+    im = plt.imshow(matrix, aspect='auto', cmap='plasma', vmin=-max_abs, vmax=max_abs)
     plt.gca().invert_yaxis()
     plt.colorbar(im, label='Weight Value')
     plt.title('Reservoir Weight Matrix')
@@ -86,30 +165,19 @@ if __name__ == "__main__":
     plt.savefig("resovoir_weight_matrix.png")
     plt.show(block=False)
 
-    # 正規化と自己結合強化
-    for i in range(N):
-        count = np.count_nonzero(resovoir_weight[i])
-        if count > 0:
-            resovoir_weight[i] = resovoir_weight[i] / count
-        if resovoir_weight[i][i] != 0 and i%(N//4) < N//5:
-            resovoir_weight[i][i] = 4 * count * resovoir_weight[i][i]  # 自己結合を強化
-            synapses_out1.U[i] = 0.1
-            synapses_out1.tau_rec[i] = 0.1
-
-
-    # ----  NetworkX グラフに変換 ----
+def show_network(resovoir_weight, N, SEED, num):
     G = nx.DiGraph()
     for i in range(N):
         for j in range(N):
             w = resovoir_weight[i][j]
             if w != 0:
                 G.add_edge(j, i, weight=w)  # j→i（pre→post）
-    pos = nx.spring_layout(G, seed=seed)    #   ノード配置（円形 or 自動レイアウト） 
+    pos = nx.spring_layout(G, seed=SEED)    #   ノード配置（円形 or 自動レイアウト） 
     edges = G.edges(data=True)              #   エッジ属性（色と太さ） 
     edge_colors = ['red' if d['weight'] > 0 else 'blue' for (u, v, d) in edges]
     edge_widths = [abs(d['weight']) for (u, v, d) in edges]
     #   可視化 
-    plt.figure(num=2, figsize=(8, 8))
+    plt.figure(num=num, figsize=(8, 8))
     nx.draw_networkx_nodes(G, pos, node_size=5, node_color="lightgray")
     nx.draw_networkx_edges(G, pos, edge_color=edge_colors, width=edge_widths, arrows=True, arrowstyle='-|>')
     plt.title("Reservoir Network Graph")
@@ -118,62 +186,34 @@ if __name__ == "__main__":
     plt.savefig("network.png")
     plt.show(block=False)
 
-    # ---- set step input ----
-    I=np.zeros((number_of_iterations, N))
-    for i in range(100):
-        temp = 0.9*random.random()/dt
-        I[int(temp):int(0.1/dt+temp),random.randint(0,N-1)] = 0.13
-    # I[int(0.05/dt):int(0.15/dt),0] = 0.13
-    rasters = np.zeros((number_of_iterations, N))
-    output = np.zeros((number_of_iterations+int(0.5//dt), N))
-    cols = np.arange(output.shape[1])
-    next_input = np.zeros(N)
-    delays = np.random.randint(0.0008//dt, 0.0012//dt, size=N)  # delay for each neuron
-    # delays = np.random.randint(0.001//dt, 0.02//dt, size=N)  # delay for each neuron
-    # delay = np.random.randint(0.03//dt, 0.5//dt)  # delay for all neuron
-    # delays = np.full(N, delay-1)  # uniform delay for all neurons
-
-    # ---- run simulatiion ----
-    start = time.perf_counter()
-    for i in tqdm(range(number_of_iterations)):
-        I[i] += next_input
-        rasters[i], v0[i] = cell0.calc(inputs=I[i], itr=i)  # update cell state
-        rows = delays + i
-        output[rows, cols] = 35*synapses_out1(rasters[i], i)  # [nA]
-        next_input = np.dot(resovoir_weight, output[i])  # update input for next iteration
-    end = time.perf_counter()
-
-    print(f"processing time for {tmax}s simulation mas {(end - start)} s when reservoir_size was {N}")
-    print(f"seed value was {seed}")
-
-    # ---- plot simulation result ----
-    fig = plt.figure(num=3, figsize=(10,4))
+def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, output, rasters, num):
+    fig = plt.figure(num=num, figsize=(10,4))
     spec = gridspec.GridSpec(ncols=1, nrows=3, figure=fig, hspace=0.1, height_ratios=[1, 4, 4])
     ax0 = fig.add_subplot(spec[0])
     ax1 = fig.add_subplot(spec[1])
     ax2 = fig.add_subplot(spec[2])
-    times, neuron_ids = np.nonzero(rasters)
     ax0.set_xticks([])
-    ax0.plot([i*dt for i in range(0, number_of_iterations)], I[:,0], color="black")
+    ax0.plot([i*dt for i in range(0, number_of_iterations)], I[:,id], color="black")
     ax0.set_xlim(0, tmax)
-    ax1.plot([i*dt for i in range(0, number_of_iterations)], v0[:,0])    
+    ax1.plot([i*dt for i in range(0, number_of_iterations)], v0[:,id])    
     ax1.set_xlim(0, tmax)
     ax1.set_ylabel("v")
     ax1.set_xticks([])
-    ax2.plot([i*dt for i in range(0, number_of_iterations)], output[:number_of_iterations,0])
+    ax2.plot([i*dt for i in range(0, number_of_iterations)], output[:number_of_iterations,id])
     ax2.set_xlim(0, tmax)
     ax2.set_ylabel("synapse output")
     ax0.set_ylabel("I")
     ax2.set_xlabel("[s]")
     fig.savefig("single_neuron.png")
 
+def plot_raster(dt, tmax, rasters, N, num):
     times, neuron_ids = np.nonzero(rasters)
     times = times * dt
-    neuron_ids = neuron_ids + 1  # Adjust neuron IDs to start from 1
+    neuron_ids = neuron_ids  # Adjust neuron IDs to start from 1
     cluster_colors = ['red', 'blue', 'green', 'orange']
-    cluster_id = ((neuron_ids - 1) // (N // 4))  # 0,1,2,3 のクラスタID
+    cluster_id = ((neuron_ids) // (N // 4))  # 0,1,2,3 のクラスタID
     colors = [cluster_colors[c % 4] for c in cluster_id]
-    plt.figure(num=4, figsize=(9, 5))
+    plt.figure(num=num, figsize=(9, 5))
     plt.scatter(times, neuron_ids, s=1, color=colors)
     plt.xlabel("time")
     plt.xlim(0, tmax)
@@ -182,4 +222,11 @@ if __name__ == "__main__":
     plt.title("Raster Plot")
     plt.tight_layout()
     plt.savefig("raster.png")
-    plt.show()
+
+if __name__ == "__main__":
+    profiler = LineProfiler()
+    profiler.add_function(tsodyks_markram.__call__)
+    profiler.add_function(main)
+    profiler.runcall(main)
+    profiler.print_stats()
+    # main()

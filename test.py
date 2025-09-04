@@ -35,7 +35,7 @@ if __name__ == "__main__":
     # set the number of iterations
     number_of_iterations=int(tmax/dt)
 
-    v0 = np.zeros((number_of_iterations, N))
+    v0 = np.zeros((number_of_iterations, N), dtype='float16')
     spike = np.zeros(N)
     past_spike = np.zeros(N)
     random.seed(seed) # for reproducibility
@@ -51,10 +51,6 @@ if __name__ == "__main__":
     output = np.zeros((number_of_iterations+delay, N))
     cols = np.arange(output.shape[1])
     next_input = np.zeros(N)
-    synapses_out1.mask_faci[0]=1
-    synapses_out1.U[0]=0
-    synapses_out1.tau_inact[0]=0.0015
-    synapses_out1.tau_rec[0]=0.13
 
     # run simulatiion
     start = time.perf_counter()
@@ -62,7 +58,7 @@ if __name__ == "__main__":
         I[i] += output[i]
         rasters[i], v0[i] = cell0.calc(inputs=I[i], itr=i)  # update cell state
         rows = delays + i
-        output[rows, cols] = 1.25*synapses_out1(rasters[i], i)  # [nA]
+        output[rows, cols] = 6*synapses_out1(rasters[i])  # [nA]
     end = time.perf_counter()
     print(f"processing time for {tmax}s simulation mas {(end - start)} s when reservoir_size was {N}")
 
