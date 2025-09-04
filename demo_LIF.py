@@ -13,37 +13,48 @@ from line_profiler import LineProfiler
 
 
 def main():
-    SEED = int(random.random() * 1000)
 
-    # SEED = 890
-
-    # set a PQN cell
     N = int(input("number of neurons: "))
-    cell0=LIF(N = N)
-    dt = 0.0001
-
-    # set a synapse
-    synapses_out1 = tsodyks_markram(N, dt=dt, tau_rec=0.5, U=0.5)
-
+    
     # ---- initialization ----
+    SEED = int(random.random() * 1000)
+    # SEED = 890
+    dt = 1e-4  # [s]
     tmax=3    # length of simulation [s]
+    cell0=LIF(N = N)
+    synapses_out1 = tsodyks_markram(N, dt=dt, tau_rec=0.5, U=0.5)
     number_of_iterations=int(tmax/dt)
-    v0= np.zeros((number_of_iterations, N), dtype='float16')
-    spike = np.zeros(N)
+    I=np.zeros((number_of_iterations, N))
+    for i in range(100):
+        temp = 0.9*random.random()/dt
+        I[int(temp):int(0.1/dt+temp),random.randint(0,N-1)] = 0.13
+    # I[int(0.05/dt):int(0.15/dt),0] = 0.13
+    v0= np.zeros((number_of_iterations, N))
+    rasters = np.zeros((number_of_iterations, N), dtype=bool)
+    synapses_spike = np.zeros((13, N, N), dtype=bool)
+    output = np.zeros((number_of_iterations+int(0.5//dt), N))
+    next_input = np.zeros(N)
+    delays = np.random.randint(8, 13, size=(N,N))  # delay for each neuron
+    # delays = np.vstack([delays for _ in range(N)])  # shape (N, N)
+    col = np.arange(N).reshape(N,1)
     resovoir_weight = np.zeros((N, N))
     resovoir_origin = np.zeros((N, N))
     random.seed(SEED) # for reproducibility
     np.random.seed(SEED)
     num = 0
 
-    # --- Create reservoir weights with clustered structure ---
+
+    # ---- 重み行列の作成 ----
     resovoir_origin, mask = create_reservoir_matrix(N)
+    resovoir_weight = np.copy(resovoir_origin)
+    synapses_out1.mask = mask != 0
+    synapses_out1.mask_faci = mask == -1
+    synapses_out1.U[mask == -1] = 0
 
     # ---- 重み行列の可視化 ----
     visualize_matrix(resovoir_origin, num)
     num += 1
 
-    resovoir_weight = np.copy(resovoir_origin)
     # 正規化と自己結合強化
     for i in range(N):
         count = np.count_nonzero(resovoir_weight[i])
@@ -54,27 +65,11 @@ def main():
             synapses_out1.U[i][i] = 0.1
             synapses_out1.tau_rec[i][i] = 0.1
 
-    synapses_out1.mask = mask != 0
-    synapses_out1.mask_faci = mask == -1
-    synapses_out1.U[mask == -1] = 0
 
     # ----  NetworkX グラフに変換 ----
     show_network(resovoir_weight, N, SEED, num)
     num += 1
 
-    # ---- set step input ----
-    I=np.zeros((number_of_iterations, N))
-    for i in range(100):
-        temp = 0.9*random.random()/dt
-        I[int(temp):int(0.1/dt+temp),random.randint(0,N-1)] = 0.13
-    # I[int(0.05/dt):int(0.15/dt),0] = 0.13
-    rasters = np.zeros((number_of_iterations, N), dtype=bool)
-    synapses_spike = np.zeros((13, N, N), dtype=bool)
-    output = np.zeros((number_of_iterations+int(0.5//dt), N))
-    next_input = np.zeros(N)
-    delays = np.random.randint(8, 13, size=(N,N))  # delay for each neuron
-    # delays = np.vstack([delays for _ in range(N)])  # shape (N, N)
-    col = np.arange(N).reshape(N,1)
     resovoir_weight = resovoir_weight * 70  # 重みのスケーリング
 
     # ---- RUN SIMULATION ----
