@@ -23,7 +23,6 @@ def main():
     dt = 1e-4  # [s]
     tmax=3    # length of simulation [s]
     cell0=LIF(N = N)
-    synapses_out1 = tsodyks_markram(N, dt=dt, tau_rec=0.5, U=0.5)
     number_of_iterations=int(tmax/dt)
     I=np.zeros((number_of_iterations, N))
     for i in range(100):
@@ -32,12 +31,10 @@ def main():
     # I[int(0.05/dt):int(0.15/dt),0] = 0.13
     v0= np.zeros((number_of_iterations, N))
     rasters = np.zeros((number_of_iterations, N), dtype=bool)
-    synapses_spike = np.zeros((13, N, N), dtype=bool)
     output = np.zeros((number_of_iterations+int(0.5//dt), N))
     next_input = np.zeros(N)
     delays = np.random.randint(8, 13, size=(N,N))  # delay for each neuron
     # delays = np.vstack([delays for _ in range(N)])  # shape (N, N)
-    col = np.arange(N).reshape(N,1)
     resovoir_weight = np.zeros((N, N))
     resovoir_origin = np.zeros((N, N))
     random.seed(SEED) # for reproducibility
@@ -48,14 +45,25 @@ def main():
     # ---- 重み行列の作成 ----
     resovoir_origin, mask = create_reservoir_matrix(N)
     resovoir_weight = np.copy(resovoir_origin)
-    synapses_out1.mask = mask != 0
-    synapses_out1.mask_faci = mask == -1
-    synapses_out1.U[mask == -1] = 0
+
+    N_S = np.count_nonzero(resovoir_weight)
+    col_indices, row_indices = np.where(resovoir_weight.T != 0)
+    synapses_out1 = tsodyks_markram(N_S, dt=dt, tau_rec=0.5, U=0.5)
+    for i in range(N_S):
+        r = row_indices[i]
+        c = col_indices[i]
+        if resovoir_weight[r, c] < 0:
+            synapses_out1.mask_faci[i] = 1
+            synapses_out1.U[i] = 0
+        if r == c and c%(N//4) < N//5:
+            synapses_out1.U[i] = 0.1
+            synapses_out1.tau_rec[i] = 0.1
+            
     delays = delays * (mask != 0)
 
     # ---- 重み行列の可視化 ----
-    visualize_matrix(resovoir_origin, num)
-    num += 1
+    # visualize_matrix(resovoir_origin, num)
+    # num += 1
 
     # 正規化と自己結合強化
     for i in range(N):
@@ -64,30 +72,39 @@ def main():
             resovoir_weight[i] = resovoir_weight[i] / count
         if resovoir_weight[i][i] != 0 and i%(N//4) < N//5:
             resovoir_weight[i][i] = 2 * count * resovoir_weight[i][i]  # 自己結合を強化
-            synapses_out1.U[i][i] = 0.1
-            synapses_out1.tau_rec[i][i] = 0.1
 
 
     # ----  NetworkX グラフに変換 ----
-    show_network(resovoir_weight, N, SEED, num)
-    num += 1
+    # show_network(resovoir_weight, N, SEED, num)
+    # num += 1
 
     resovoir_weight = resovoir_weight * 70  # 重みのスケーリング
+    resovoir_weight_calc = np.zeros((N, N_S))
+    synapses = np.zeros(N, dtype=int)
+    synapses_spike = np.zeros(N_S, dtype=bool)
+    delayed_synapses_out = np.zeros((13,N_S))  # 最大遅延時間分のバッファ
+    delay_row = np.zeros(N_S, dtype=int)
+    col_indices, row_indices = np.where(resovoir_weight.T != 0)
+    for i in range(N_S):
+        r = row_indices[i]
+        c = col_indices[i]
+        resovoir_weight_calc[r, i] = resovoir_weight[r, c]
+        delay_row[i] = delays[r, c]
+    for i in range(N):
+        synapses[i] = np.count_nonzero(resovoir_weight[:, i])
+    cols = np.arange(N_S)
 
     # ---- RUN SIMULATION ----
     start = time.perf_counter()
     for i in tqdm(range(number_of_iterations)):
         I[i] += next_input
         rasters[i], v0[i] = cell0.calc(inputs=I[i], itr=i)  # update cell state
-        idx=np.where(rasters[i])[0]
-        arrival_time = delays[:, idx]
-        cols = np.repeat(col, len(idx), axis=1)
-        idx = np.vstack([idx for _ in range(N)])
-        synapses_spike[arrival_time, cols, idx] = 1
-        next_input = np.sum(synapses_out1(synapses_spike[0]) * resovoir_weight, axis=1) # [nA]
-        synapses_spike = np.roll(synapses_spike, -1, axis=0)
-        synapses_spike[-1] = 0
+        synapses_spike = np.repeat(rasters[i], repeats=synapses)
+        delayed_synapses_out[delay_row, cols] = synapses_out1(synapses_spike)
+        next_input = np.dot(resovoir_weight_calc, delayed_synapses_out[0]) # [nA]
         output[i] = next_input
+        delayed_synapses_out = np.roll(delayed_synapses_out, -1, axis=0)
+        delayed_synapses_out[-1] = 0
     end = time.perf_counter()
 
     print(f"processing time for {tmax}s simulation mas {(end - start)} s when reservoir_size was {N}")

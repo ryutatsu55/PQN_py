@@ -59,20 +59,19 @@ class tsodyks_markram:
         """
         self.N = N
         self.dt = dt
-        self.tau_rec = np.full((N,N), tau_rec)
-        self.tau_inact = np.full((N,N), tau_inact)
-        self.tau_faci = np.full((N,N), tau_faci)
-        self.U = np.full((N,N), U)
-        self.x = np.full((N,N), 1.0)
-        self.z = np.zeros((N,N))
-        self.y = np.zeros((N,N))
-        self.mask_faci = np.zeros((N,N), dtype=bool)
-        self.mask = np.zeros((N,N), dtype=bool)
-        self.U_1  = np.full((N,N), U_1)
-        self.dx = np.zeros((N,N))
-        self.dy = np.zeros((N,N))
-        self.dz = np.zeros((N,N))
-        self.dU = np.zeros((N,N))
+        self.tau_rec = np.full(N, tau_rec)
+        self.tau_inact = np.full(N, tau_inact)
+        self.tau_faci = np.full(N, tau_faci)
+        self.U = np.full(N, U)
+        self.x = np.full(N, 1.0)
+        self.z = np.zeros(N)
+        self.y = np.zeros(N)
+        self.mask_faci = np.zeros(N, dtype=bool)
+        self.U_1  = np.full(N, U_1)
+        self.dx = np.zeros(N)
+        self.dy = np.zeros(N)
+        self.dz = np.zeros(N)
+        self.dU = np.zeros(N)
 
     def __call__(self, spike):
         """
@@ -86,7 +85,7 @@ class tsodyks_markram:
         self.dz = (self.y/self.tau_inact - self.z/self.tau_rec) * self.dt
         self.dU[self.mask_faci] = -self.U[self.mask_faci]/self.tau_faci[self.mask_faci] * self.dt
 
-        idx = np.where(spike * self.mask == 1)
+        idx = np.where(spike == 1)
         idx_in = np.where((spike * self.mask_faci) == 1)
         if idx_in[0].size > 0:
             self.dU[idx_in] += self.U_1[idx_in] * (1.0 - self.U[idx_in])
