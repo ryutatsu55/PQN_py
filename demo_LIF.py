@@ -51,6 +51,7 @@ def main():
     synapses_out1.mask = mask != 0
     synapses_out1.mask_faci = mask == -1
     synapses_out1.U[mask == -1] = 0
+    delays = delays * (mask != 0)
 
     # ---- 重み行列の可視化 ----
     visualize_matrix(resovoir_origin, num)
