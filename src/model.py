@@ -1,4 +1,5 @@
 import numpy as np
+import random
 class PQNModel:
     # available mode list
     MODE_LIST=['RSexci', 'RSinhi', 'FS', 'LTS', 'IB', 'EB', 'PB', 'Class2']
@@ -12,6 +13,7 @@ class PQNModel:
         self.state_variable_n=np.zeros(N)
         self.state_variable_q=np.zeros(N)
         self.state_variable_u=np.zeros(N)
+        self.past_spike = np.zeros(N)
         self.set_mode(mode)
 
     # set mode
@@ -137,15 +139,18 @@ class PQNModel:
         return q0
 
     # update all state variables
-    def update(self,I_float):
+    def calc(self,I_float, itr, dt):
         dv=self.dv0(I_float)
         dn=self.dn0()
         dq=self.dq0()
         self.state_variable_v+=dv
         self.state_variable_n+=dn
         self.state_variable_q+=dq
-        
-
+        v = self.get_membrane_potential(self)
+        spike = np.where(v > 4, 1, 0)
+        raster = np.where(spike-self.past_spike > 0, 1, 0)
+        self.past_spike = spike
+        return raster, v
     # get membrane potential
     def get_membrane_potential(self):
         return self.state_variable_v/2**self.BIT_WIDTH_FRACTIONAL
@@ -177,7 +182,7 @@ class LIF:
         self.th = th
         self.tc = tc
         self.peak = peak
-        self.R = 100    #[mV/nA, MΩ]
+        self.R = np.full(N, 100)    #[mV/nA, MΩ]
         self.v = np.full(N, rest, dtype=np.float32)  # 初期膜電位
         self.tlast = np.full(N, tlast, dtype=np.float32)  # 最後に発火した時刻
 
@@ -207,6 +212,82 @@ class LIF:
         self.tlast = self.tlast + (dt * itr - self.tlast) * (self.v >= self.th)  # 発火したら発火時刻を記録
         self.v = self.v + (self.peak - self.v) * (self.v >= self.th)  # 発火したら膜電位をピークへ
 
+        # monitor.append(v >= self.th)
+
+        # return monitor
+        return (self.v >= self.th), self.v
+    
+class Izhikevich:
+    def __init__(
+        self,
+        ref: float = 3,
+        th: float = -55,
+        tc: float = 40,
+        peak: float = 20,
+        i: float = 0,
+        tlast: float = 0,
+        N: int = 100,
+    ):
+        """
+        Leaky integrate-and-fire neuron
+        :param rest: 静止膜電位 [mV]
+        :param ref:  不応期 [ms]
+        :param th:   発火閾値 [mV]
+        :param tc:   膜時定数 [ms]
+        :param peak: ピーク電位 [mV]
+        """
+
+        self.N = N
+        self.a = np.zeros(N)
+        self.b = np.zeros(N)
+        self.c = np.zeros(N)
+        self.d = np.zeros(N)
+        for i in range(N):
+            if i % (N // 4) < N/5:
+                self.a[i] = 0.02
+                self.b[i] = 0.2
+                self.c[i] = -65 + 15*random.uniform(0,1)**2
+                self.d[i] = 8 - 6*random.uniform(0,1)**2
+            else:
+                self.a[i] = 0.02 + 0.08*random.uniform(0,1)
+                self.b[i] = 0.25 - 0.05*random.uniform(0,1)
+                self.c[i] = -65
+                self.d[i] = 2
+        self.ref = ref
+        self.th = th
+        self.tc = tc
+        self.peak = peak
+        self.R = 100    #[mV/nA, MΩ]
+        self.v = self.c  # 初期膜電位
+        self.u = np.zeros(N, dtype=np.float32)  # 回復変数
+        self.tlast = np.full(N, tlast, dtype=np.float32)  # 最後に発火した時刻
+
+    def calc(
+        self, inputs, itr, dt=0.1
+    ):
+        
+        """
+        dtだけ膜電位を計算する
+        スパイク1/0のみ出力データとする
+        """
+        # i = 0           # 初期入力電流
+        # v = self.rest   # 初期膜電位
+        # tlast = 0       # 最後に発火した時刻
+        # monitor = []    # 膜電位の記録
+
+        # for t in range(int(time/dt)):
+        self.v = self.v + (self.c - self.v) * (self.v >= self.th)  # 発火したら静止膜電位に戻す
+
+
+        # 膜電位の計算
+        dv = 0.04*np.square(self.v) + 5*self.v + 140 - self.u + inputs
+        self.v += dv * dt
+        du = self.a*(self.b*self.v - self.u)
+        self.u += du * dt
+
+        # 発火処理
+        self.v = self.v + (self.peak - self.v) * (self.v >= self.th)  # 発火したら膜電位をピークへ
+        self.u = self.u + self.d * (self.v >= self.th)  # 発火したら回復変数を増加
         # monitor.append(v >= self.th)
 
         # return monitor

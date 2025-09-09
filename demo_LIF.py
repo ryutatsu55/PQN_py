@@ -1,5 +1,6 @@
 import os
 from src import PQNModel
+from src import Izhikevich
 from src import LIF
 import numpy as np
 import matplotlib.pyplot as plt
@@ -23,18 +24,24 @@ def main():
     dt = 1e-4  # [s]
     tmax=3    # length of simulation [s]
     cell0=LIF(N = N)
+    # cell0=Izhikevich(N = N)
+    # cell0=PQNModel(N = N)
     number_of_iterations=int(tmax/dt)
     I=np.zeros((number_of_iterations, N))
     for i in range(100):
         temp = 0.9*random.random()/dt
         I[int(temp):int(0.1/dt+temp),random.randint(0,N-1)] = 0.13
-    # I[int(0.05/dt):int(0.15/dt),0] = 0.13
+    # background noise
+    for i in range(N):
+        if i%(N//4) < N//5:
+            I[:,i] += 2.5e-2*np.random.rand(number_of_iterations)
+        else:
+            I[:,i] += 1.0e-2*np.random.rand(number_of_iterations)
     v0= np.zeros((number_of_iterations, N))
     rasters = np.zeros((number_of_iterations, N), dtype=bool)
     output = np.zeros((number_of_iterations+int(0.5//dt), N))
     next_input = np.zeros(N)
     delays = np.random.randint(8, 13, size=(N,N))  # delay for each neuron
-    # delays = np.vstack([delays for _ in range(N)])  # shape (N, N)
     resovoir_weight = np.zeros((N, N))
     resovoir_origin = np.zeros((N, N))
     random.seed(SEED) # for reproducibility
@@ -63,26 +70,25 @@ def main():
 
     # ---- 重み行列の可視化 ----
     # visualize_matrix(resovoir_origin, num)
+    # plt.show(block=False)
     # num += 1
 
     # 正規化と自己結合強化
     for i in range(N):
-        count = np.count_nonzero(resovoir_weight[i])
-        if count > 0:
-            resovoir_weight[i] = resovoir_weight[i] / count
         if resovoir_weight[i][i] != 0 and i%(N//4) < N//5:
-            resovoir_weight[i][i] = 2 * count * resovoir_weight[i][i]  # 自己結合を強化
+            cell0.R[i] = 1000  #[mV/nA, MΩ]
+    resovoir_weight = resovoir_weight*5000/N
 
 
     # ----  NetworkX グラフに変換 ----
     # show_network(resovoir_weight, N, SEED, num)
+    # plt.show(block=False)
     # num += 1
 
-    resovoir_weight = resovoir_weight * 70  # 重みのスケーリング
     resovoir_weight_calc = np.zeros((N, N_S))
     synapses = np.zeros(N, dtype=int)
     synapses_spike = np.zeros(N_S, dtype=bool)
-    delayed_synapses_out = np.zeros((13,N_S))  # 最大遅延時間分のバッファ
+    delayed_synapses_out = np.zeros((13,N_S), dtype=bool)  # 最大遅延時間分のバッファ
     delay_row = np.zeros(N_S, dtype=int)
     col_indices, row_indices = np.where(resovoir_weight.T != 0)
     for i in range(N_S):
@@ -100,8 +106,9 @@ def main():
         I[i] += next_input
         rasters[i], v0[i] = cell0.calc(inputs=I[i], itr=i)  # update cell state
         synapses_spike = np.repeat(rasters[i], repeats=synapses)
-        delayed_synapses_out[delay_row, cols] = synapses_out1(synapses_spike)
-        next_input = np.dot(resovoir_weight_calc, delayed_synapses_out[0]) # [nA]
+        delayed_synapses_out[delay_row, cols] = synapses_spike
+        hoge = synapses_out1(delayed_synapses_out[0])  # update synapse state
+        next_input = np.dot(resovoir_weight_calc, hoge) # [nA]
         output[i] = next_input
         delayed_synapses_out = np.roll(delayed_synapses_out, -1, axis=0)
         delayed_synapses_out[-1] = 0
@@ -244,7 +251,6 @@ def visualize_matrix(matrix, num):
     plt.ylabel('Post Neuron')
     plt.tight_layout()
     plt.savefig("resovoir_weight_matrix.png")
-    plt.show(block=False)
 
 def show_network(resovoir_weight, N, SEED, num):
     G = nx.DiGraph()
@@ -265,7 +271,6 @@ def show_network(resovoir_weight, N, SEED, num):
     plt.axis('off')
     plt.tight_layout()
     plt.savefig("network.png")
-    plt.show(block=False)
 
 def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, output, rasters, num):
     fig = plt.figure(num=num, figsize=(10,4))
@@ -305,9 +310,9 @@ def plot_raster(dt, tmax, rasters, N, num):
     plt.savefig("raster.png")
 
 if __name__ == "__main__":
-    profiler = LineProfiler()
-    profiler.add_function(tsodyks_markram.__call__)
-    profiler.add_function(main)
-    profiler.runcall(main)
-    profiler.print_stats()
-    # main()
+    # profiler = LineProfiler()
+    # profiler.add_function(tsodyks_markram.__call__)
+    # profiler.add_function(main)
+    # profiler.runcall(main)
+    # profiler.print_stats()
+    main()
