@@ -139,14 +139,14 @@ class PQNModel:
         return q0
 
     # update all state variables
-    def calc(self,I_float, itr, dt):
-        dv=self.dv0(I_float)
+    def calc(self,inputs, itr):
+        dv=self.dv0(inputs)
         dn=self.dn0()
         dq=self.dq0()
         self.state_variable_v+=dv
         self.state_variable_n+=dn
         self.state_variable_q+=dq
-        v = self.get_membrane_potential(self)
+        v = self.get_membrane_potential()
         spike = np.where(v > 4, 1, 0)
         raster = np.where(spike-self.past_spike > 0, 1, 0)
         self.past_spike = spike
@@ -259,11 +259,11 @@ class Izhikevich:
         self.peak = peak
         self.R = 100    #[mV/nA, MΩ]
         self.v = self.c  # 初期膜電位
-        self.u = np.zeros(N, dtype=np.float32)  # 回復変数
+        self.u = self.b*self.v  # 回復変数
         self.tlast = np.full(N, tlast, dtype=np.float32)  # 最後に発火した時刻
 
     def calc(
-        self, inputs, itr, dt=0.1
+        self, inputs, itr, dt=1e-4
     ):
         
         """
