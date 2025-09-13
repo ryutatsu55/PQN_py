@@ -53,7 +53,12 @@ def main():
     synapses_out1.U[mask == -1] = 0
 
     # ---- 重み行列の可視化 ----
-    visualize_matrix(resovoir_origin, num)
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    outdir = f"sim_results/SEED{SEED}_{timestamp}"
+    os.makedirs(outdir, exist_ok=True)
+    img_suffix = f"_seed{SEED}_{timestamp}"
+
+    visualize_matrix(resovoir_origin, num, outdir, img_suffix)
     num += 1
 
     # 正規化と自己結合強化
@@ -68,7 +73,7 @@ def main():
 
 
     # ----  NetworkX グラフに変換 ----
-    show_network(resovoir_weight, N, SEED, num)
+    show_network(resovoir_weight, N, SEED, num, outdir, img_suffix)
     num += 1
 
     resovoir_weight = resovoir_weight * 70  # 重みのスケーリング
@@ -160,10 +165,10 @@ def main():
     print(f"CSV files written under '{outdir}/' with filenames containing SEED {SEED} and timestamp {timestamp}.")
 
     # ---- plot simulation result ----
-    plot_single_neuron(0, dt, tmax, number_of_iterations, I, v0, output, rasters, num)
+    plot_single_neuron(0, dt, tmax, number_of_iterations, I, v0, output, rasters, num, outdir, img_suffix)
     num += 1
 
-    plot_raster(dt, tmax, rasters, N, num)
+    plot_raster(dt, tmax, rasters, N, num, outdir, img_suffix)
     num += 1
 
     plt.show()
@@ -215,7 +220,7 @@ def create_reservoir_matrix(N):
 
     return resovoir_weight, mask
 
-def visualize_matrix(matrix, num):
+def visualize_matrix(matrix, num, outdir, img_suffix):
     plt.figure(num=num, figsize=(8, 6))
     max_abs = np.max(np.abs(matrix))
     im = plt.imshow(matrix, aspect='auto', cmap='plasma', vmin=-max_abs, vmax=max_abs)
@@ -225,10 +230,10 @@ def visualize_matrix(matrix, num):
     plt.xlabel('Pre Neuron')
     plt.ylabel('Post Neuron')
     plt.tight_layout()
-    plt.savefig("resovoir_weight_matrix.png")
+    plt.savefig(os.path.join(outdir, f"resovoir_weight_matrix{img_suffix}.png"))
     plt.show(block=False)
 
-def show_network(resovoir_weight, N, SEED, num):
+def show_network(resovoir_weight, N, SEED, num, outdir, img_suffix):
     G = nx.DiGraph()
     for i in range(N):
         for j in range(N):
@@ -246,10 +251,10 @@ def show_network(resovoir_weight, N, SEED, num):
     plt.title("Reservoir Network Graph")
     plt.axis('off')
     plt.tight_layout()
-    plt.savefig("network.png")
+    plt.savefig(os.path.join(outdir, f"raster{img_suffix}.png"))
     plt.show(block=False)
 
-def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, output, rasters, num):
+def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, output, rasters, num, outdir, img_suffix):
     fig = plt.figure(num=num, figsize=(10,4))
     spec = gridspec.GridSpec(ncols=1, nrows=3, figure=fig, hspace=0.1, height_ratios=[1, 4, 4])
     ax0 = fig.add_subplot(spec[0])
@@ -267,9 +272,9 @@ def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, output, raster
     ax2.set_ylabel("synapse output")
     ax0.set_ylabel("I")
     ax2.set_xlabel("[s]")
-    fig.savefig("single_neuron.png")
+    fig.savefig(os.path.join(outdir, f"single_neuron{img_suffix}.png"))
 
-def plot_raster(dt, tmax, rasters, N, num):
+def plot_raster(dt, tmax, rasters, N, num, outdir, img_suffix):
     times, neuron_ids = np.nonzero(rasters)
     times = times * dt
     neuron_ids = neuron_ids  # Adjust neuron IDs to start from 1
@@ -284,7 +289,7 @@ def plot_raster(dt, tmax, rasters, N, num):
     plt.ylim(0, N)
     plt.title("Raster Plot")
     plt.tight_layout()
-    plt.savefig("raster.png")
+    plt.savefig(os.path.join(outdir, f"raster{img_suffix}.png"))
 
 if __name__ == "__main__":
     profiler = LineProfiler()
