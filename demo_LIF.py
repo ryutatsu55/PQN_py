@@ -97,72 +97,7 @@ def main():
     print(f"processing time for {tmax}s simulation mas {(end - start)} s when reservoir_size was {N}")
     print(f"SEED value was {SEED}")
 
-
-        # --- export simulation results to CSV ---
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
-    outdir = f"sim_results/SEED{SEED}_{timestamp}"
-    os.makedirs(outdir, exist_ok=True)
-
-    def fname(base):
-        return os.path.join(outdir, f"{base}_seed{SEED}_{timestamp}.csv")
-
-    # times_vec = times
-    # np.savetxt(
-    #     fname("times"),
-    #     times_vec,
-    #     delimiter=",",
-    #     header="t_s",
-    #     comments="",
-    #     fmt="%.9f",
-    # )
-    np.savetxt(
-        fname("I"),
-        I,
-        delimiter=",",
-        header="input",
-        comments="",
-        fmt="%.9f",
-    )
-    np.savetxt(
-        fname("v"),
-        v0,
-        delimiter=",",
-        header="v",
-        comments="",
-        fmt="%.9f",
-    )
-    np.savetxt(
-        fname("syn_output"),
-        output,
-        delimiter=",",
-        header="syn_output",
-        comments="",
-        fmt="%.9f",
-    )
-    np.savetxt(
-        fname("reservoir_weight"),
-        resovoir_weight,
-        delimiter=",",
-        header="reservoir_weight",
-        comments="",
-        fmt="%.9f",
-    )
-    # spikes_sparse = np.vstack((times, neuron_ids)).T
-    # np.savetxt(
-    #     fname("spikes_sparse"),
-    #     spikes_sparse,
-    #     delimiter=",",
-    #     header="time,neuron_id",
-    #     comments="",
-    #     fmt=["%.9f", "%d"],
-    # )
-    with open(fname("meta"), "w") as f:
-        f.write(f"SEED,{SEED}\n")
-        f.write(f"dt,{dt}\n")
-        f.write(f"tmax,{tmax}\n")
-        f.write(f"N,{N}\n")
-
-    print(f"CSV files written under '{outdir}/' with filenames containing SEED {SEED} and timestamp {timestamp}.")
+    save_csv_files(outdir, SEED, timestamp, I, v0, output, resovoir_weight, dt, tmax, N)
 
     # ---- plot simulation result ----
     plot_single_neuron(0, dt, tmax, number_of_iterations, I, v0, output, rasters, num, outdir, img_suffix)
@@ -290,6 +225,70 @@ def plot_raster(dt, tmax, rasters, N, num, outdir, img_suffix):
     plt.title("Raster Plot")
     plt.tight_layout()
     plt.savefig(os.path.join(outdir, f"raster{img_suffix}.png"))
+
+def save_csv_files(outdir, SEED, timestamp, I, v0, output, resovoir_weight, dt, tmax, N):
+        # --- export simulation results to CSV ---
+
+    def fname(base):
+        return os.path.join(outdir, f"{base}_seed{SEED}_{timestamp}.csv")
+
+    # times_vec = times
+    # np.savetxt(
+    #     fname("times"),
+    #     times_vec,
+    #     delimiter=",",
+    #     header="t_s",
+    #     comments="",
+    #     fmt="%.9f",
+    # )
+    np.savetxt(
+        fname("I"),
+        I,
+        delimiter=",",
+        header="input",
+        comments="",
+        fmt="%.9f",
+    )
+    np.savetxt(
+        fname("v"),
+        v0,
+        delimiter=",",
+        header="v",
+        comments="",
+        fmt="%.9f",
+    )
+    np.savetxt(
+        fname("syn_output"),
+        output,
+        delimiter=",",
+        header="syn_output",
+        comments="",
+        fmt="%.9f",
+    )
+    np.savetxt(
+        fname("reservoir_weight"),
+        resovoir_weight,
+        delimiter=",",
+        header="reservoir_weight",
+        comments="",
+        fmt="%.9f",
+    )
+    # spikes_sparse = np.vstack((times, neuron_ids)).T
+    # np.savetxt(
+    #     fname("spikes_sparse"),
+    #     spikes_sparse,
+    #     delimiter=",",
+    #     header="time,neuron_id",
+    #     comments="",
+    #     fmt=["%.9f", "%d"],
+    # )
+    with open(fname("meta"), "w") as f:
+        f.write(f"SEED,{SEED}\n")
+        f.write(f"dt,{dt}\n")
+        f.write(f"tmax,{tmax}\n")
+        f.write(f"N,{N}\n")
+
+    print(f"CSV files written under '{outdir}/' with filenames containing SEED {SEED} and timestamp {timestamp}.")
 
 if __name__ == "__main__":
     profiler = LineProfiler()
