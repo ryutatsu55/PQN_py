@@ -3,3 +3,4 @@ matplotlib
 tqdm
 networkx
 line_profiler
+scipy
