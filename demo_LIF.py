@@ -17,37 +17,36 @@ from line_profiler import LineProfiler
 def main():
 
     N = int(input("number of neurons: "))
-    
+
     # ---- initialization ----
     SEED = int(random.random() * 1000)
     # SEED = 890
     dt = 1e-4  # [s]
-    tmax=3    # length of simulation [s]
-    cell0=LIF(N = N)
+    tmax = 3  # length of simulation [s]
+    cell0 = LIF(N=N)
     # cell0=Izhikevich(N = N)
     # cell0=PQNModel(N = N)
-    number_of_iterations=int(tmax/dt)
-    I=np.zeros((number_of_iterations, N))
+    number_of_iterations = int(tmax / dt)
+    I = np.zeros((number_of_iterations, N))
     for i in range(100):
-        temp = 0.9*random.random()/dt
-        I[int(temp):int(0.1/dt+temp),random.randint(0,N-1)] = 0.13
+        temp = 0.9 * random.random() / dt
+        I[int(temp) : int(0.1 / dt + temp), random.randint(0, N - 1)] = 0.13
     # background noise
     for i in range(N):
-        if i%(N//4) < N//5:
-            I[:,i] += 2.5e-2*np.random.rand(number_of_iterations)
+        if i % (N // 4) < N // 5:
+            I[:, i] += 2.5e-2 * np.random.rand(number_of_iterations)
         else:
-            I[:,i] += 1.0e-2*np.random.rand(number_of_iterations)
-    v0= np.zeros((number_of_iterations, N))
+            I[:, i] += 1.0e-2 * np.random.rand(number_of_iterations)
+    v0 = np.zeros((number_of_iterations, N))
     rasters = np.zeros((number_of_iterations, N), dtype=bool)
-    output = np.zeros((number_of_iterations+int(0.5//dt), N))
+    output = np.zeros((number_of_iterations + int(0.5 // dt), N))
     next_input = np.zeros(N)
-    delays = np.random.randint(8, 13, size=(N,N))  # delay for each neuron
+    delays = np.random.randint(8, 13, size=(N, N))  # delay for each neuron
     resovoir_weight = np.zeros((N, N))
     resovoir_origin = np.zeros((N, N))
-    random.seed(SEED) # for reproducibility
+    random.seed(SEED)  # for reproducibility
     np.random.seed(SEED)
     num = 0
-
 
     # ---- 重み行列の作成 ----
     resovoir_origin, mask = create_reservoir_matrix(N)
@@ -62,10 +61,10 @@ def main():
         if resovoir_weight[r, c] < 0:
             synapses_out1.mask_faci[i] = 1
             synapses_out1.U[i] = 0
-        if r == c and c%(N//4) < N//5:
+        if r == c and c % (N // 4) < N // 5:
             synapses_out1.U[i] = 0.1
             synapses_out1.tau_rec[i] = 0.1
-            
+
     delays = delays * (mask != 0)
 
     # ---- 重み行列の可視化 ----
@@ -79,10 +78,9 @@ def main():
 
     # 正規化と自己結合強化
     for i in range(N):
-        if resovoir_weight[i][i] != 0 and i%(N//4) < N//5:
-            cell0.R[i] = 1000  #[mV/nA, MΩ]
-    resovoir_weight = resovoir_weight*5000/N
-
+        if resovoir_weight[i][i] != 0 and i % (N // 4) < N // 5:
+            cell0.R[i] = 1000  # [mV/nA, MΩ]
+    resovoir_weight = resovoir_weight * 5000 / N
 
     # ----  NetworkX グラフに変換 ----
     show_network(resovoir_weight, N, SEED, num, outdir, img_suffix)
@@ -91,7 +89,7 @@ def main():
     resovoir_weight_calc = np.zeros((N, N_S))
     synapses = np.zeros(N, dtype=int)
     synapses_spike = np.zeros(N_S, dtype=bool)
-    delayed_synapses_out = np.zeros((13,N_S), dtype=bool)  # 最大遅延時間分のバッファ
+    delayed_synapses_out = np.zeros((13, N_S), dtype=bool)  # 最大遅延時間分のバッファ
     delay_row = np.zeros(N_S, dtype=int)
     col_indices, row_indices = np.where(resovoir_weight.T != 0)
     for i in range(N_S):
@@ -111,19 +109,33 @@ def main():
         synapses_spike = np.repeat(rasters[i], repeats=synapses)
         delayed_synapses_out[delay_row, cols] = synapses_spike
         hoge = synapses_out1(delayed_synapses_out[0])  # update synapse state
-        next_input = np.dot(resovoir_weight_calc, hoge) # [nA]
+        next_input = np.dot(resovoir_weight_calc, hoge)  # [nA]
         output[i] = next_input
         delayed_synapses_out = np.roll(delayed_synapses_out, -1, axis=0)
         delayed_synapses_out[-1] = 0
     end = time.perf_counter()
 
-    print(f"processing time for {tmax}s simulation mas {(end - start)} s when reservoir_size was {N}")
+    print(
+        f"processing time for {tmax}s simulation mas {(end - start)} s when reservoir_size was {N}"
+    )
     print(f"SEED value was {SEED}")
 
     save_csv_files(outdir, SEED, timestamp, I, v0, output, resovoir_weight, dt, tmax, N)
 
     # ---- plot simulation result ----
-    plot_single_neuron(0, dt, tmax, number_of_iterations, I, v0, output, rasters, num, outdir, img_suffix)
+    plot_single_neuron(
+        0,
+        dt,
+        tmax,
+        number_of_iterations,
+        I,
+        v0,
+        output,
+        rasters,
+        num,
+        outdir,
+        img_suffix,
+    )
     num += 1
 
     plot_raster(dt, tmax, rasters, N, num, outdir, img_suffix)
@@ -140,56 +152,64 @@ def create_reservoir_matrix(N):
     while crust_idx != 4:
         i1 = int(crust_idx * N / 4)
         i2 = int((crust_idx + 1) * N / 4)
-        resovoir_weight[i1:i2, i1:i2] = ((G * np.random.randn(N//4, N//4)) / (np.sqrt(N) * p) + 1) * (np.random.rand(N//4, N//4) < p)
+        resovoir_weight[i1:i2, i1:i2] = (
+            (G * np.random.randn(N // 4, N // 4)) / (np.sqrt(N) * p) + 1
+        ) * (np.random.rand(N // 4, N // 4) < p)
         # print(resovoir_weight[i1:i2, i1:i2])
         crust_idx += 1
 
-    #クラスター間の接続
+    # クラスター間の接続
     M = 4
     G = 0.001
     p = 0.001
     for hoge in range(M):
-        i_range1 = int((hoge*N/4)%N)
-        i_range2 = int((hoge+1)*N/4)
+        i_range1 = int((hoge * N / 4) % N)
+        i_range2 = int((hoge + 1) * N / 4)
         if i_range2 > N:
             i_range2 = i_range2 % N
-        j_range1 = int(((hoge+1)*N/4)%N)
-        j_range2 = int((hoge+2)*N/4)
+        j_range1 = int(((hoge + 1) * N / 4) % N)
+        j_range2 = int((hoge + 2) * N / 4)
         if j_range2 > N:
             j_range2 = j_range2 % N
-        resovoir_weight[i_range1:i_range2, j_range1:j_range2] = ((G * np.random.randn(N//4, N//4)) / (np.sqrt(N) * p) + 1) * (np.random.rand(N//4, N//4) < p)
+        resovoir_weight[i_range1:i_range2, j_range1:j_range2] = (
+            (G * np.random.randn(N // 4, N // 4)) / (np.sqrt(N) * p) + 1
+        ) * (np.random.rand(N // 4, N // 4) < p)
 
-        i_range1 = int(((hoge+1)*N/4)%N)
-        i_range2 = int((hoge+2)*N/4)
+        i_range1 = int(((hoge + 1) * N / 4) % N)
+        i_range2 = int((hoge + 2) * N / 4)
         if i_range2 > N:
             i_range2 = i_range2 % N
-        j_range1 = int((hoge*N/4)%N)
-        j_range2 = int((hoge+1)*N/4)
+        j_range1 = int((hoge * N / 4) % N)
+        j_range2 = int((hoge + 1) * N / 4)
         if j_range2 > N:
             j_range2 = j_range2 % N
-        resovoir_weight[i_range1:i_range2, j_range1:j_range2] = ((G * np.random.randn(N//4, N//4)) / (np.sqrt(N) * p) + 1) * (np.random.rand(N//4, N//4) < p)
+        resovoir_weight[i_range1:i_range2, j_range1:j_range2] = (
+            (G * np.random.randn(N // 4, N // 4)) / (np.sqrt(N) * p) + 1
+        ) * (np.random.rand(N // 4, N // 4) < p)
 
     # 抑制結合の設定
-    base_mask = np.ones((N, int(N/4)))
-    base_mask[:, N//5:] = -1
+    base_mask = np.ones((N, int(N / 4)))
+    base_mask[:, N // 5 :] = -1
     mask = np.hstack([base_mask for _ in range(4)])
     resovoir_weight = resovoir_weight * mask
     mask = (resovoir_weight != 0) * mask
 
     return resovoir_weight, mask
 
+
 def visualize_matrix(matrix, num, outdir, img_suffix):
     plt.figure(num=num, figsize=(8, 6))
     max_abs = np.max(np.abs(matrix))
-    im = plt.imshow(matrix, aspect='auto', cmap='plasma', vmin=-max_abs, vmax=max_abs)
+    im = plt.imshow(matrix, aspect="auto", cmap="plasma", vmin=-max_abs, vmax=max_abs)
     plt.gca().invert_yaxis()
-    plt.colorbar(im, label='Weight Value')
-    plt.title('Reservoir Weight Matrix')
-    plt.xlabel('Pre Neuron')
-    plt.ylabel('Post Neuron')
+    plt.colorbar(im, label="Weight Value")
+    plt.title("Reservoir Weight Matrix")
+    plt.xlabel("Pre Neuron")
+    plt.ylabel("Post Neuron")
     plt.tight_layout()
     plt.savefig(os.path.join(outdir, f"resovoir_weight_matrix{img_suffix}.png"))
     plt.show(block=False)
+
 
 def show_network(resovoir_weight, N, SEED, num, outdir, img_suffix):
     G = nx.DiGraph()
@@ -198,46 +218,57 @@ def show_network(resovoir_weight, N, SEED, num, outdir, img_suffix):
             w = resovoir_weight[i][j]
             if w != 0:
                 G.add_edge(j, i, weight=w)  # j→i（pre→post）
-    pos = nx.spring_layout(G, seed=SEED)    #   ノード配置（円形 or 自動レイアウト） 
-    edges = G.edges(data=True)              #   エッジ属性（色と太さ） 
-    edge_colors = ['red' if d['weight'] > 0 else 'blue' for (u, v, d) in edges]
-    edge_widths = [abs(d['weight']) for (u, v, d) in edges]
-    #   可視化 
+    pos = nx.spring_layout(G, seed=SEED)  #   ノード配置（円形 or 自動レイアウト）
+    edges = G.edges(data=True)  #   エッジ属性（色と太さ）
+    edge_colors = ["red" if d["weight"] > 0 else "blue" for (u, v, d) in edges]
+    edge_widths = [abs(d["weight"]) for (u, v, d) in edges]
+    #   可視化
     plt.figure(num=num, figsize=(8, 8))
     nx.draw_networkx_nodes(G, pos, node_size=5, node_color="lightgray")
-    nx.draw_networkx_edges(G, pos, edge_color=edge_colors, width=edge_widths, arrows=True, arrowstyle='-|>')
+    nx.draw_networkx_edges(
+        G, pos, edge_color=edge_colors, width=edge_widths, arrows=True, arrowstyle="-|>"
+    )
     plt.title("Reservoir Network Graph")
-    plt.axis('off')
+    plt.axis("off")
     plt.tight_layout()
     plt.savefig(os.path.join(outdir, f"raster{img_suffix}.png"))
     plt.show(block=False)
 
-def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, output, rasters, num, outdir, img_suffix):
-    fig = plt.figure(num=num, figsize=(10,4))
-    spec = gridspec.GridSpec(ncols=1, nrows=3, figure=fig, hspace=0.1, height_ratios=[1, 4, 4])
+
+def plot_single_neuron(
+    id, dt, tmax, number_of_iterations, I, v0, output, rasters, num, outdir, img_suffix
+):
+    fig = plt.figure(num=num, figsize=(10, 4))
+    spec = gridspec.GridSpec(
+        ncols=1, nrows=3, figure=fig, hspace=0.1, height_ratios=[1, 4, 4]
+    )
     ax0 = fig.add_subplot(spec[0])
     ax1 = fig.add_subplot(spec[1])
     ax2 = fig.add_subplot(spec[2])
     ax0.set_xticks([])
-    ax0.plot([i*dt for i in range(0, number_of_iterations)], I[:,id], color="black")
+    ax0.plot([i * dt for i in range(0, number_of_iterations)], I[:, id], color="black")
     ax0.set_xlim(0, tmax)
-    ax1.plot([i*dt for i in range(0, number_of_iterations)], v0[:,id])    
+    ax1.plot([i * dt for i in range(0, number_of_iterations)], v0[:, id])
     ax1.set_xlim(0, tmax)
     ax1.set_ylabel("v")
     ax1.set_xticks([])
-    ax2.plot([i*dt for i in range(0, number_of_iterations)], output[:number_of_iterations,id])
+    ax2.plot(
+        [i * dt for i in range(0, number_of_iterations)],
+        output[:number_of_iterations, id],
+    )
     ax2.set_xlim(0, tmax)
     ax2.set_ylabel("synapse output")
     ax0.set_ylabel("I")
     ax2.set_xlabel("[s]")
     fig.savefig(os.path.join(outdir, f"single_neuron{img_suffix}.png"))
 
+
 def plot_raster(dt, tmax, rasters, N, num, outdir, img_suffix):
     times, neuron_ids = np.nonzero(rasters)
     times = times * dt
     neuron_ids = neuron_ids  # Adjust neuron IDs to start from 1
-    cluster_colors = ['red', 'blue', 'green', 'orange']
-    cluster_id = ((neuron_ids) // (N // 4))  # 0,1,2,3 のクラスタID
+    cluster_colors = ["red", "blue", "green", "orange"]
+    cluster_id = (neuron_ids) // (N // 4)  # 0,1,2,3 のクラスタID
     colors = [cluster_colors[c % 4] for c in cluster_id]
     plt.figure(num=num, figsize=(9, 5))
     plt.scatter(times, neuron_ids, s=1, color=colors)
@@ -249,8 +280,11 @@ def plot_raster(dt, tmax, rasters, N, num, outdir, img_suffix):
     plt.tight_layout()
     plt.savefig(os.path.join(outdir, f"raster{img_suffix}.png"))
 
-def save_csv_files(outdir, SEED, timestamp, I, v0, output, resovoir_weight, dt, tmax, N):
-        # --- export simulation results to CSV ---
+
+def save_csv_files(
+    outdir, SEED, timestamp, I, v0, output, resovoir_weight, dt, tmax, N
+):
+    # --- export simulation results to CSV ---
 
     def fname(base):
         return os.path.join(outdir, f"{base}_seed{SEED}_{timestamp}.csv")
@@ -311,7 +345,10 @@ def save_csv_files(outdir, SEED, timestamp, I, v0, output, resovoir_weight, dt, 
         f.write(f"tmax,{tmax}\n")
         f.write(f"N,{N}\n")
 
-    print(f"CSV files written under '{outdir}/' with filenames containing SEED {SEED} and timestamp {timestamp}.")
+    print(
+        f"CSV files written under '{outdir}/' with filenames containing SEED {SEED} and timestamp {timestamp}."
+    )
+
 
 if __name__ == "__main__":
     # profiler = LineProfiler()
