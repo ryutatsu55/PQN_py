@@ -20,32 +20,32 @@ def main():
     
     # ---- initialization ----
     SEED = int(random.random() * 1000)
-    # SEED = 890
+    # SEED = 678
+    random.seed(SEED) # for reproducibility
+    np.random.seed(SEED)
     dt = 1e-4  # [s]
-    tmax=10    # length of simulation [s]
+    tmax=3    # length of simulation [s]
     # cell0=LIF(N = N)
     # cell0=Izhikevich(N = N)
     cell0=PQNModel(N = N)
     number_of_iterations=int(tmax/dt)
-    I=np.zeros((number_of_iterations, N))
+    I=np.zeros((number_of_iterations, N), dtype=np.float32)  # input [nA]
     for i in range(100):
         temp = 0.9*random.random()/dt
         I[int(temp):int(0.1/dt+temp),random.randint(0,N-1)] = 0.13
     # background noise
-    for i in range(N):
-        if i%(N//4) < N//5:
-            I[:,i] += 2.5e-2*np.random.rand(number_of_iterations)
-        else:
-            I[:,i] += 1.0e-2*np.random.rand(number_of_iterations)
+    # for i in range(N):
+    #     if i%(N//4) < N//5:
+    #         I[:,i] += 2.5e-2*np.random.rand(number_of_iterations)
+    #     else:
+    #         I[:,i] += 1.0e-2*np.random.rand(number_of_iterations)
+    # I[int(number_of_iterations/4):int(number_of_iterations/4*3),:] = 0.09
     v0= np.zeros((number_of_iterations, N))
     rasters = np.zeros((number_of_iterations, N), dtype=bool)
-    output = np.zeros((number_of_iterations+int(0.5//dt), N))
-    next_input = np.zeros(N)
-    delays = np.random.randint(8, 13, size=(N,N))  # delay for each neuron
+    output = np.zeros((number_of_iterations+int(0.5//dt), N), dtype=np.float32)  # synapse output [nA]
+    next_input = np.zeros(N, dtype=np.float32)  # input for next time step [nA]
     resovoir_weight = np.zeros((N, N))
     resovoir_origin = np.zeros((N, N))
-    random.seed(SEED) # for reproducibility
-    np.random.seed(SEED)
     num = 0
 
 
@@ -66,19 +66,20 @@ def main():
             synapses_out1.U[i] = 0.1
             synapses_out1.tau_rec[i] = 0.1
             
+    delays = np.random.randint(8, 13, size=(N,N))  # delay for each neuron
     delays = delays * (mask != 0)
 
     # ---- 重み行列の可視化 ----
-    # visualize_matrix(resovoir_origin, num)
+    visualize_matrix(resovoir_origin, num)
     # plt.show(block=False)
-    # num += 1
+    num += 1
 
     # 正規化と自己結合強化
-    for i in range(N):
-        if resovoir_weight[i][i] != 0 and i%(N//4) < N//5:
-            # cell0.R[i] = 1000  #[mV/nA, MΩ]
-            resovoir_weight[i][i] = 1.5*resovoir_weight[i][i]
-    resovoir_weight = resovoir_weight*3000/N
+    # for i in range(N):
+    #     if resovoir_weight[i][i] != 0 and i%(N//4) < N//5:
+    #         # cell0.R[i] = 1000  #[mV/nA, MΩ]
+    #         resovoir_weight[i][i] = 1.5*resovoir_weight[i][i]
+    resovoir_weight = resovoir_weight*2000/N
 
 
     # ----  NetworkX グラフに変換 ----
@@ -101,20 +102,31 @@ def main():
         synapses[i] = np.count_nonzero(resovoir_weight[:, i])
     cols = np.arange(N_S)
 
+
+    buffer_size = 13
     # ---- RUN SIMULATION ----
     start = time.perf_counter()
     for i in tqdm(range(number_of_iterations)):
+        read_idx = int(i%buffer_size)
         I[i] += next_input
         rasters[i], v0[i] = cell0.calc(inputs=I[i], itr=i)  # update cell state
         synapses_spike = np.repeat(rasters[i], repeats=synapses)
-        delayed_synapses_out[delay_row, cols] = synapses_spike
-        hoge = synapses_out1(delayed_synapses_out[0])  # update synapse state
+        delay_row_ = (delay_row + read_idx) % buffer_size
+        delayed_synapses_out[delay_row_, cols] = synapses_spike
+        hoge = synapses_out1(delayed_synapses_out[read_idx])  # update synapse state
         next_input = np.dot(resovoir_weight_calc, hoge) # [nA]
         output[i] = next_input
-        delayed_synapses_out = np.roll(delayed_synapses_out, -1, axis=0)
-        delayed_synapses_out[-1] = 0
+        # if delayed_synapses_out[read_idx,0] != 0:
+        # # if rasters[i,0] != 0:
+        # # if next_input[0] != 0:
+        #     print(hoge[0])
+        #     print(next_input[0])
+        #     print(i)
     end = time.perf_counter()
 
+    # print(np.where(rasters[:,201]==1))
+    # print(delay_row)
+    # print(resovoir_weight_calc[0])
     print(f"processing time for {tmax}s simulation mas {(end - start)} s when reservoir_size was {N}")
     print(f"SEED value was {SEED}")
 
@@ -127,72 +139,30 @@ def main():
     def fname(base):
         return os.path.join(outdir, f"{base}_seed{SEED}_{timestamp}.csv")
 
-    # times_vec = times
-    # np.savetxt(
-    #     fname("times"),
-    #     times_vec,
-    #     delimiter=",",
-    #     header="t_s",
-    #     comments="",
-    #     fmt="%.9f",
-    # )
-    np.savetxt(
-        fname("I"),
-        I,
-        delimiter=",",
-        header="input",
-        comments="",
-        fmt="%.9f",
-    )
-    np.savetxt(
-        fname("v"),
-        v0,
-        delimiter=",",
-        header="v",
-        comments="",
-        fmt="%.9f",
-    )
-    np.savetxt(
-        fname("syn_output"),
-        output,
-        delimiter=",",
-        header="syn_output",
-        comments="",
-        fmt="%.9f",
-    )
-    np.savetxt(
-        fname("reservoir_weight"),
-        resovoir_weight,
-        delimiter=",",
-        header="reservoir_weight",
-        comments="",
-        fmt="%.9f",
-    )
-    # spikes_sparse = np.vstack((times, neuron_ids)).T
-    # np.savetxt(
-    #     fname("spikes_sparse"),
-    #     spikes_sparse,
-    #     delimiter=",",
-    #     header="time,neuron_id",
-    #     comments="",
-    #     fmt=["%.9f", "%d"],
-    # )
-    with open(fname("meta"), "w") as f:
-        f.write(f"SEED,{SEED}\n")
-        f.write(f"dt,{dt}\n")
-        f.write(f"tmax,{tmax}\n")
-        f.write(f"N,{N}\n")
+    # # times_vec = times
+    # # np.savetxt(fname("times"), times_vec, delimiter=",", header="t_s", comments="", fmt="%.9f",)
+    # np.savetxt(fname("I"), I, delimiter=",", header="input", comments="", fmt="%.9f",)
+    # np.savetxt(fname("v"), v0, delimiter=",", header="v", comments="", fmt="%.9f",)
+    # np.savetxt(fname("syn_output"), output, delimiter=",", header="syn_output", comments="", fmt="%.9f",)
+    # np.savetxt(fname("reservoir_weight"), resovoir_weight, delimiter=",", header="reservoir_weight", comments="", fmt="%.9f",)
+    # # spikes_sparse = np.vstack((times, neuron_ids)).T
+    # # np.savetxt(fname("spikes_sparse"), spikes_sparse, delimiter=",", header="time,neuron_id", comments="", fmt=["%.9f", "%d"],)
+    # with open(fname("meta"), "w") as f:
+    #     f.write(f"SEED,{SEED}\n")
+    #     f.write(f"dt,{dt}\n")
+    #     f.write(f"tmax,{tmax}\n")
+    #     f.write(f"N,{N}\n")
 
-    print(f"CSV files written under '{outdir}/' with filenames containing SEED {SEED} and timestamp {timestamp}.")
+    # print(f"CSV files written under '{outdir}/' with filenames containing SEED {SEED} and timestamp {timestamp}.")
 
     # ---- plot simulation result ----
-    plot_single_neuron(0, dt, tmax, number_of_iterations, I, v0, output, rasters, num)
+    plot_single_neuron(0, dt, tmax, number_of_iterations, I, v0, num)
     num += 1
 
     plot_raster(dt, tmax, rasters, N, num)
     num += 1
 
-    plt.show()
+    # plt.show()
 
 
 def create_reservoir_matrix(N):
@@ -237,6 +207,8 @@ def create_reservoir_matrix(N):
     base_mask[:, N//5:] = -1
     mask = np.hstack([base_mask for _ in range(4)])
     resovoir_weight = resovoir_weight * mask
+    # resovoir_weight = np.zeros((N, N))#test
+    # resovoir_weight[0, 1] = 1       #test
     mask = (resovoir_weight != 0) * mask
 
     return resovoir_weight, mask
@@ -273,24 +245,19 @@ def show_network(resovoir_weight, N, SEED, num):
     plt.tight_layout()
     plt.savefig("network.png")
 
-def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, output, rasters, num):
+def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, num):
     fig = plt.figure(num=num, figsize=(10,4))
-    spec = gridspec.GridSpec(ncols=1, nrows=3, figure=fig, hspace=0.1, height_ratios=[1, 4, 4])
+    spec = gridspec.GridSpec(ncols=1, nrows=2, figure=fig, hspace=0.1, height_ratios=[1, 4])
     ax0 = fig.add_subplot(spec[0])
     ax1 = fig.add_subplot(spec[1])
-    ax2 = fig.add_subplot(spec[2])
     ax0.set_xticks([])
     ax0.plot([i*dt for i in range(0, number_of_iterations)], I[:,id], color="black")
     ax0.set_xlim(0, tmax)
     ax1.plot([i*dt for i in range(0, number_of_iterations)], v0[:,id])    
     ax1.set_xlim(0, tmax)
     ax1.set_ylabel("v")
-    ax1.set_xticks([])
-    ax2.plot([i*dt for i in range(0, number_of_iterations)], output[:number_of_iterations,id])
-    ax2.set_xlim(0, tmax)
-    ax2.set_ylabel("synapse output")
     ax0.set_ylabel("I")
-    ax2.set_xlabel("[s]")
+    ax1.set_xlabel("[s]")
     fig.savefig("single_neuron.png")
 
 def plot_raster(dt, tmax, rasters, N, num):
