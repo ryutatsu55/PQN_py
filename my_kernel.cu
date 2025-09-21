@@ -169,20 +169,18 @@ __global__ void synapses_calc(
 
 __global__ void mat_vec_mul(
     float* result,
+    const int* neuron_to,
     const float* matrix,
     const float* vector,
-    int rows,
-    int cols
+    int num_synapses
 )
 {
-    int row = blockIdx.x * blockDim.x + threadIdx.x;
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (row < rows) {
+    if (tid < num_synapses) {
         float dot_product = 0.0f;
-        // 内積を計算
-        for (int col = 0; col < cols; ++col) {
-            dot_product += matrix[row * cols + col] * vector[col];
-        }
-        result[row] = dot_product;
+        int neuron_id = (int)neuron_to[tid];
+        dot_product = matrix[tid] * vector[tid];
+        atomicAdd(&result[neuron_id], dot_product);
     }
 }

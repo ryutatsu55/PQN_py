@@ -55,16 +55,17 @@ def main():
     Ns_h=np.full(N, 27584, dtype=np.int32)
     Qs_h=np.full(N, -3692, dtype=np.int32)
     I_float_h=np.full((num_steps,N), 0, dtype=np.float32)
+    # I_float_h[int(num_steps/4):int(num_steps/4*3),:] += 0.09
     for i in range(100):
         temp = 0.9*random.random()/dt
-        I_float_h[int(temp):int(0.1/dt+temp),random.randint(0,N-1)] = 0.12
+        I_float_h[int(temp):int(0.1/dt+temp),random.randint(0,N-1)] += 0.12
     # background noise
+    # I_float_h += 0.09
     for i in range(N):
         if i%(N//4) < N//5:
             I_float_h[:,i] += 1.5e-1*np.random.rand(num_steps)
         else:
             I_float_h[:,i] += 1.5e-1*np.random.rand(num_steps)
-    I_float_h[int(num_steps/4):int(num_steps/4*3),:] = 0.09
     raster_h=np.full(N, 0, dtype=np.uint8)
     PARAM = PARAM_init()
     BIT_WIDTH=18#21
@@ -76,14 +77,14 @@ def main():
     # ---- 重み行列の作成 ----
     resovoir_origin, mask = create_reservoir_matrix(N)
     resovoir_weight = np.copy(resovoir_origin)
-    resovoir_weight = resovoir_weight*500/N
+    resovoir_weight = resovoir_weight*1500/N
     visualize_matrix(resovoir_origin, plot_num)
     plot_num += 1
 
     N_S = np.int32(np.count_nonzero(resovoir_weight))
 
     tau_rec_h, tau_inact_h, tau_faci_h, U1_h, U_h, mask_faci_h = synapses_init(resovoir_weight, N, N_S)
-    which_neuron_h, calc_matrix_h = calc_init(resovoir_weight, N, N_S)
+    neuron_from_h, calc_matrix_h, neuron_to_h = calc_init(resovoir_weight, N, N_S)
     delayed_row_h = delay_init(resovoir_weight, N, N_S, mask)
 
     # 4. デバイス側(GPU)にメモリを確保し、データを転送
@@ -102,8 +103,9 @@ def main():
     U1_d = gpuarray.to_gpu(U1_h)
     U_d = gpuarray.to_gpu(U_h)
     mask_faci_d = gpuarray.to_gpu(mask_faci_h)
-    which_neuron_d = gpuarray.to_gpu(which_neuron_h)
+    neuron_from_d = gpuarray.to_gpu(neuron_from_h)
     calc_matrix_d = gpuarray.to_gpu(calc_matrix_h)
+    neuron_to_d = gpuarray.to_gpu(neuron_to_h)
     delayed_row_d = gpuarray.to_gpu(delayed_row_h)
     last_spike_d = gpuarray.zeros(N, dtype=np.uint8)
     raster_d = gpuarray.to_gpu(raster_h)
@@ -140,7 +142,7 @@ def main():
         propagate_spikes(               #stream1
             delayed_spikes_d.gpudata,
             raster_d.gpudata,
-            which_neuron_d.gpudata,
+            neuron_from_d.gpudata,
             delayed_row_d.gpudata,
             np.uint32(N_S),
             np.uint32(read_idx),
@@ -176,18 +178,8 @@ def main():
             grid=(synapse_blocks_per_grid, 1),
             stream=stream2
         )
-        # mat_vec_mul(                     #stream3
-        #     synapses_out_d.gpudata,
-        #     calc_matrix_d.gpudata,
-        #     y_d.gpudata,
-        #     np.int32(N),         # 行数
-        #     np.int32(N_S),       # 列数
-        #     block=(neuron_threads_per_block, 1, 1),
-        #     grid=(neuron_blocks_per_grid, 1),
-        #     stream=stream2
-        # )
-        
         stream3.wait_for_event(event)
+        
         cuda.memcpy_dtoh_async(Vs_h, Vs_d.gpudata, stream = stream3)
         cuda.memcpy_dtoh_async(raster_h, raster_d.gpudata, stream = stream3)
         
@@ -206,11 +198,22 @@ def main():
         
         stream1.synchronize()
         stream2.synchronize()
-        arrival_spike = arrival_spike_d.get()
-        hoge = y_d.get()
-        synapses_out_h = np.dot(calc_matrix_h, hoge)
-        output[i] = synapses_out_h + I_float_h[i]
-        synapses_out_d = gpuarray.to_gpu(synapses_out_h)
+        synapses_out_d.fill(0)
+        mat_vec_mul(                     #stream2
+            synapses_out_d.gpudata,
+            neuron_to_d.gpudata,
+            calc_matrix_d.gpudata,
+            y_d.gpudata,
+            np.int32(N_S),
+            block=(synapse_threads_per_block, 1, 1),
+            grid=(synapse_blocks_per_grid, 1)
+        )
+        # hoge = y_d.get()
+        # synapses_out_h = np.dot(calc_matrix_h, hoge)
+        # output[i] = synapses_out_h + I_float_h[i]
+        # synapses_out_d = gpuarray.to_gpu(synapses_out_h)
+        # arrival_spike = arrival_spike_d.get()
+        output[i] = synapses_out_d.get() + I_float_h[i]
         # if arrival_spike[0] == 1:
         # # if raster_h[0] == 1:
         # # if synapses_out_h[0] != 0:
@@ -399,15 +402,19 @@ def synapses_init(resovoir_weight, N, N_S):
     return tau_rec, tau_inact, tau_faci, U1, U, mask_faci
 
 def calc_init(resovoir_weight, N, N_S):
-    which_neuron = np.zeros(N_S, dtype=np.int32)
-    resovoir_weight_calc = np.zeros((N, N_S), dtype=np.float32)
+    neuron_from = np.zeros(N_S, dtype=np.int32)
+    resovoir_weight_calc = np.zeros(N_S, dtype=np.float32)
+    # resovoir_weight_calc = np.zeros((N, N_S), dtype=np.float32)
+    neuron_to = np.zeros(N_S, dtype=np.int32)
     col_indices, row_indices = np.where(resovoir_weight.T != 0)
     for i in range(N_S):
         r = row_indices[i]
         c = col_indices[i]
-        which_neuron[i] = c
-        resovoir_weight_calc[r, i] = resovoir_weight[r, c]
-    return which_neuron, resovoir_weight_calc
+        neuron_from[i] = c
+        resovoir_weight_calc[i] = resovoir_weight[r, c]
+        # resovoir_weight_calc[r, i] = resovoir_weight[r, c]
+        neuron_to[i] = r
+    return neuron_from, resovoir_weight_calc, neuron_to
 
 def delay_init(resovoir_weight, N, N_S, mask):
     delays = np.random.randint(8, 13, size=(N,N))
