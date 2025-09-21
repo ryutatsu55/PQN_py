@@ -3,7 +3,6 @@ from src import PQNModel
 from src import Izhikevich
 from src import LIF
 import numpy as np
-import matplotlib.pyplot as plt
 from matplotlib import gridspec
 from tqdm import tqdm
 import time
@@ -12,6 +11,29 @@ from src.Synapses import DoubleExponentialSynapse
 from src.Synapses import tsodyks_markram
 import random
 from line_profiler import LineProfiler
+import argparse
+
+# --- Headless detection & Matplotlib backend ---
+# Headless if explicitly requested, or no display server is present on POSIX
+HEADLESS = (os.environ.get("HEADLESS") == "1") or (
+    os.name == "posix"
+    and not os.environ.get("DISPLAY")
+    and not os.environ.get("WAYLAND_DISPLAY")
+)
+if HEADLESS:
+    import matplotlib
+
+    matplotlib.use("Agg")  # must be set before importing pyplot
+import matplotlib.pyplot as plt
+
+# --- CLI flags ---
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--interactive",
+    action="store_true",
+    help="Show GUI windows. Default: headless image export only.",
+)
+ARGS, _ = parser.parse_known_args()
 
 
 def main():
@@ -137,11 +159,11 @@ def main():
         img_suffix,
     )
     num += 1
-
     plot_raster(dt, tmax, rasters, N, num, outdir, img_suffix)
     num += 1
-
-    plt.show()
+    # show windows only when explicitly requested and not headless
+    if ARGS.interactive and not HEADLESS:
+        plt.show()
 
 
 def create_reservoir_matrix(N):
@@ -208,7 +230,6 @@ def visualize_matrix(matrix, num, outdir, img_suffix):
     plt.ylabel("Post Neuron")
     plt.tight_layout()
     plt.savefig(os.path.join(outdir, f"resovoir_weight_matrix{img_suffix}.png"))
-    plt.show(block=False)
 
 
 def show_network(resovoir_weight, N, SEED, num, outdir, img_suffix):
@@ -232,7 +253,6 @@ def show_network(resovoir_weight, N, SEED, num, outdir, img_suffix):
     plt.axis("off")
     plt.tight_layout()
     plt.savefig(os.path.join(outdir, f"raster{img_suffix}.png"))
-    plt.show(block=False)
 
 
 def plot_single_neuron(
