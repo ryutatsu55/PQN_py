@@ -11,6 +11,7 @@ from src.Synapses import DoubleExponentialSynapse
 from src.Synapses import tsodyks_markram
 import random
 from line_profiler import LineProfiler
+import platform
 import argparse
 
 # --- Headless detection & Matplotlib backend ---
@@ -34,6 +35,22 @@ parser.add_argument(
     help="Show GUI windows. Default: headless image export only.",
 )
 ARGS, _ = parser.parse_known_args()
+
+
+# --- Optional GPU-accelerated plotting (Windows + WSL with NVIDIA) ---
+USE_GPU_PLOT = False
+try:
+    is_windows = os.name == "nt"
+    is_wsl = platform.system() == "Linux" and "microsoft" in platform.release().lower()
+    if is_windows or is_wsl:
+        from PyQt5 import QtWidgets
+        import pyqtgraph as pg
+        from pyqtgraph import exporters
+
+        pg.setConfigOptions(antialias=True)
+        USE_GPU_PLOT = True
+except Exception as _e:
+    USE_GPU_PLOT = False
 
 
 def main():
@@ -144,26 +161,64 @@ def main():
 
     save_csv_files(outdir, SEED, timestamp, I, v0, output, resovoir_weight, dt, tmax, N)
 
-    # ---- plot simulation result ----
-    plot_single_neuron(
-        0,
-        dt,
-        tmax,
-        number_of_iterations,
-        I,
-        v0,
-        output,
-        rasters,
-        num,
-        outdir,
-        img_suffix,
-    )
-    num += 1
-    plot_raster(dt, tmax, rasters, N, num, outdir, img_suffix)
-    num += 1
-    # show windows only when explicitly requested and not headless
-    if ARGS.interactive and not HEADLESS:
-        plt.show()
+    # ---- plot simulation result (GPU-accelerated if available) ----
+    if USE_GPU_PLOT:
+        try:
+            plot_single_neuron_pg(
+                0,
+                dt,
+                tmax,
+                number_of_iterations,
+                I,
+                v0,
+                output,
+                rasters,
+                num,
+                outdir,
+                img_suffix,
+            )
+            plot_raster_pg(dt, tmax, rasters, N, num, outdir, img_suffix)
+        except Exception as e:
+            print(f"[WARN] GPU plotting failed ({e}); falling back to Matplotlib.")
+            plot_single_neuron(
+                0,
+                dt,
+                tmax,
+                number_of_iterations,
+                I,
+                v0,
+                output,
+                rasters,
+                num,
+                outdir,
+                img_suffix,
+            )
+            num += 1
+            plot_raster(dt, tmax, rasters, N, num, outdir, img_suffix)
+            num += 1
+            # show windows only when explicitly requested and not headless
+            if ARGS.interactive and not HEADLESS:
+                plt.show()
+    else:
+        plot_single_neuron(
+            0,
+            dt,
+            tmax,
+            number_of_iterations,
+            I,
+            v0,
+            output,
+            rasters,
+            num,
+            outdir,
+            img_suffix,
+        )
+        num += 1
+        plot_raster(dt, tmax, rasters, N, num, outdir, img_suffix)
+        num += 1
+        # show windows only when explicitly requested and not headless
+        if ARGS.interactive and not HEADLESS:
+            plt.show()
 
 
 def create_reservoir_matrix(N):
@@ -253,6 +308,92 @@ def show_network(resovoir_weight, N, SEED, num, outdir, img_suffix):
     plt.axis("off")
     plt.tight_layout()
     plt.savefig(os.path.join(outdir, f"raster{img_suffix}.png"))
+
+
+# ---------------- GPU-accelerated plotters (PyQtGraph/OpenGL) ---------------- #
+def _ensure_qapp():
+    # Create a Qt application if one is not already running
+    app = QtWidgets.QApplication.instance()
+    if app is None:
+        app = QtWidgets.QApplication([])
+    return app
+
+
+def plot_single_neuron_pg(
+    id,
+    dt,
+    tmax,
+    number_of_iterations,
+    I,
+    v0,
+    output,
+    rasters,
+    num,
+    outdir,
+    img_suffix,
+):
+    app = _ensure_qapp()
+    win = pg.GraphicsLayoutWidget(show=False)
+    win.resize(1000, 400)
+    # Row 1: input I
+    p0 = win.addPlot(row=0, col=0)
+    p0.hideAxis("bottom")
+    x = np.arange(0, number_of_iterations) * dt
+    p0.plot(x, I[:, id])
+    p0.setXRange(0, tmax, padding=0)
+    p0.setLabel("left", "I")
+    # Row 2: membrane potential v0
+    p1 = win.addPlot(row=1, col=0)
+    p1.hideAxis("bottom")
+    p1.plot(x, v0[:, id])
+    p1.setXRange(0, tmax, padding=0)
+    p1.setLabel("left", "v")
+    # Row 3: synapse output
+    p2 = win.addPlot(row=2, col=0)
+    p2.plot(x, output[:number_of_iterations, id])
+    p2.setXRange(0, tmax, padding=0)
+    p2.setLabel("left", "synapse output")
+    p2.setLabel("bottom", "[s]")
+    app.processEvents()
+    exp = exporters.ImageExporter(win.scene())
+    exp.export(os.path.join(outdir, f"single_neuron{img_suffix}.png"))
+    win.close()
+
+
+def plot_raster_pg(dt, tmax, rasters, N, num, outdir, img_suffix):
+    app = _ensure_qapp()
+    win = pg.GraphicsLayoutWidget(show=False)
+    win.resize(900, 500)
+    p = win.addPlot()
+    # Compute times / ids
+    times, neuron_ids = np.nonzero(rasters)
+    times = times * dt
+    cluster_id = neuron_ids // (N // 4)
+    # Simple per-cluster colors
+    colors = np.empty((len(cluster_id), 3), dtype=np.ubyte)
+    base_colors = np.array(
+        [[255, 0, 0], [0, 0, 255], [0, 255, 0], [255, 165, 0]], dtype=np.ubyte
+    )
+    if len(cluster_id) > 0:
+        colors[:] = base_colors[cluster_id % 4]
+    sp = pg.ScatterPlotItem()
+    sp.setData(
+        x=times,
+        y=neuron_ids,
+        brush=[pg.mkBrush(int(r), int(g), int(b)) for r, g, b in colors],
+        size=2,
+        pxMode=True,
+    )
+    p.addItem(sp)
+    p.setLabel("bottom", "time")
+    p.setXRange(0, tmax, padding=0)
+    p.setLabel("left", "neuron ID")
+    p.setYRange(0, N, padding=0)
+    p.setTitle("Raster Plot")
+    app.processEvents()
+    exp = exporters.ImageExporter(win.scene())
+    exp.export(os.path.join(outdir, f"raster{img_suffix}.png"))
+    win.close()
 
 
 def plot_single_neuron(
