@@ -1,12 +1,13 @@
 // private_vars: 各スレッド（ニューロン）の状態を保持するグローバルメモリ上の配列
 // num_threads: 全体のスレッド数
 extern "C"
+#include <stdint.h>
 __constant__ int const_param[27];
 __global__ void update_neuron_state(
-    int* Vs_d, 
-    int* Ns_d, 
-    int* Qs_d, 
-    float* I_float, 
+    int64_t* Vs_d, 
+    int64_t* Ns_d, 
+    int64_t* Qs_d, 
+    const float* I_float, 
     float* synaptic_input,
     unsigned char* last_spike, 
     unsigned char* raster, 
@@ -20,55 +21,55 @@ __global__ void update_neuron_state(
     // スレッド数が配列サイズを超えないようにガード
     if (tid < num_threads) {
         // グローバルメモリからこのスレッドの以前の値を読み込む
-        int v = Vs_d[tid];
-        int n = Ns_d[tid];
-        int q = Qs_d[tid];
+        int64_t v = Vs_d[tid];
+        int64_t n = Ns_d[tid];
+        int64_t q = Qs_d[tid];
 
-        int I = (int)((I_float[current_step * num_threads + tid]+synaptic_input[tid])*(1<<const_param[1]));
-        int vv = (int)(((long long)v * v) / (1LL << const_param[1]));
-        int v0;
+        int64_t I = (int64_t)((I_float[current_step * num_threads + tid]+synaptic_input[tid])*(1<<const_param[1]));
+        int64_t vv = (int64_t)((v * v) / (1LL << const_param[1]));
+        int64_t v0;
         if(v < 0){
-            v0 =(((long long)const_param[2] * vv) >> const_param[0]) +
-                (((long long)const_param[4] * v) >> const_param[0]) +
+            v0 =((const_param[2] * vv) >> const_param[0]) +
+                ((const_param[4] * v) >> const_param[0]) +
                 const_param[6] +
-                (((long long)const_param[8] * n) >> const_param[0]) +
-                (((long long)const_param[9] * q) >> const_param[0]) +
-                (((long long)const_param[10] * I) >> const_param[0]);
+                ((const_param[8] * n) >> const_param[0]) +
+                ((const_param[9] * q) >> const_param[0]) +
+                ((const_param[10] * I) >> const_param[0]);
         }else{
-            v0 =(((long long)const_param[3] * vv) >> const_param[0]) +
-                (((long long)const_param[5] * v) >> const_param[0]) +
+            v0 =((const_param[3] * vv) >> const_param[0]) +
+                ((const_param[5] * v) >> const_param[0]) +
                 const_param[7] +
-                (((long long)const_param[8] * n) >> const_param[0]) +
-                (((long long)const_param[9] * q) >> const_param[0]) +
-                (((long long)const_param[10] * I) >> const_param[0]);
+                ((const_param[8] * n) >> const_param[0]) +
+                ((const_param[9] * q) >> const_param[0]) +
+                ((const_param[10] * I) >> const_param[0]);
         }
         v += v0;
 
-        int n0;
+        int64_t n0;
         if(v<const_param[18]){
-            n0 =(((long long)const_param[11] * vv) >> const_param[0]) +
-                (((long long)const_param[13] * v) >> const_param[0]) +
+            n0 =((const_param[11] * vv) >> const_param[0]) +
+                ((const_param[13] * v) >> const_param[0]) +
                 const_param[16] +
-                (((long long)const_param[15] * n) >> const_param[0]);
+                ((const_param[15] * n) >> const_param[0]);
         }else{
-            n0 =(((long long)const_param[12] * vv) >> const_param[0]) +
-                (((long long)const_param[14] * v) >> const_param[0]) +
+            n0 =((const_param[12] * vv) >> const_param[0]) +
+                ((const_param[14] * v) >> const_param[0]) +
                 const_param[17] +
-                (((long long)const_param[15] * n) >> const_param[0]);
+                ((const_param[15] * n) >> const_param[0]);
         }
         n += n0;
 
-        int q0;
+        int64_t q0;
         if(v<const_param[26]){
-            q0 =(((long long)const_param[19] * vv) >> const_param[0]) +
-                (((long long)const_param[21] * v) >> const_param[0]) +
+            q0 =((const_param[19] * vv) >> const_param[0]) +
+                ((const_param[21] * v) >> const_param[0]) +
                 const_param[24] +
-                (((long long)const_param[23] * q) >> const_param[0]);
+                ((const_param[23] * q) >> const_param[0]);
         }else{
-            q0 =(((long long)const_param[20] * vv) >> const_param[0]) +
-                (((long long)const_param[22] * v) >> const_param[0]) +
+            q0 =((const_param[20] * vv) >> const_param[0]) +
+                ((const_param[22] * v) >> const_param[0]) +
                 const_param[25] +
-                (((long long)const_param[23] * q) >> const_param[0]);
+                ((const_param[23] * q) >> const_param[0]);
         }
         q += q0;
         
@@ -78,11 +79,12 @@ __global__ void update_neuron_state(
         Ns_d[tid] = n;
         Qs_d[tid] = q;
 
-        int threshold = (4 << const_param[1]);
+        int64_t threshold = (4 << const_param[1]);
         unsigned char current_spike = (v > threshold) ? 1 : 0;
         raster[tid] = (current_spike && !last_spike[tid]);
         // last_spike[tid] = last_spike[tid] | raster[tid];
         last_spike[tid] = current_spike;
+        synaptic_input[tid] = 0;
     }
 }
 
@@ -121,7 +123,7 @@ __global__ void synapses_calc(
     float* x,
     float* y,
     float* z,
-    const unsigned char* arrival_spike,
+    const unsigned char* delayed_spikes,
     const unsigned char* mask_faci,
     const float* tau_rec,
     const float* tau_inact,
@@ -129,6 +131,7 @@ __global__ void synapses_calc(
     const float* U1,
     float* U,
     int num_synapses,
+    int read_idx,            //i%buffur_size
     float dt
 )
 {
@@ -139,7 +142,7 @@ __global__ void synapses_calc(
         float y_val = y[tid];
         float z_val = z[tid];
         float U_val = U[tid];
-        unsigned char arrival = arrival_spike[tid];
+        unsigned char arrival = delayed_spikes[read_idx*num_synapses + tid];
         float tau_rec_val = tau_rec[tid];
         float tau_inact_val = tau_inact[tid];
 

@@ -34,38 +34,53 @@ def main():
     SEED = 678
     random.seed(SEED) # for reproducibility
     np.random.seed(SEED)
-    N = 1000
-    tmax = 3    #[s]
+    N = 10000
+    tmax = 10    #[s]
     dt = 1e-4
     num_steps = int(tmax/dt)
     v = np.zeros((num_steps,N))
     rasters = np.zeros((num_steps,N), dtype=np.uint8)
-    output = np.zeros((num_steps,N), dtype=np.float32)
-    buffer_size = 13
+    input = np.zeros((num_steps,N), dtype=np.float32)
+    buffer_size = 1001
     plot_num = 0
 
     # PyCUDAでストリームとイベントを作成
     stream1 = cuda.Stream()
     stream2 = cuda.Stream()
     stream3 = cuda.Stream()
-    event = cuda.Event()
+    event_update_neuron = cuda.Event()
+    event_update_input = cuda.Event()
 
     # 3. ホスト側(CPU)でデータを準備    
-    Vs_h=np.full(N, -4906, dtype=np.int32)  # 各ニューロンの膜電位などの状態変数
-    Ns_h=np.full(N, 27584, dtype=np.int32)
-    Qs_h=np.full(N, -3692, dtype=np.int32)
+    Vs_h=np.full(N, -4906, dtype=np.int64)  # 各ニューロンの膜電位などの状態変数
+    Ns_h=np.full(N, 27584, dtype=np.int64)
+    Qs_h=np.full(N, -3692, dtype=np.int64)
     I_float_h=np.full((num_steps,N), 0, dtype=np.float32)
     # I_float_h[int(num_steps/4):int(num_steps/4*3),:] += 0.09
-    for i in range(100):
-        temp = 0.9*random.random()/dt
-        I_float_h[int(temp):int(0.1/dt+temp),random.randint(0,N-1)] += 0.12
+    # for i in range(100):
+    #     temp = 0.9*random.random()/dt
+    #     I_float_h[int(temp):int(0.1/dt+temp),random.randint(0,N-1)] += 0.12
+    for i in range(100*tmax):
+        temp = (tmax-0.05)*random.random()/dt
+        I_float_h[int(temp):int(0.05/dt+temp),random.randint(0,N-1)] += 0.12
+    # for i in range(tmax):
+    #     temp = (tmax-0.05)*random.random()/dt
+    #     I_float_h[int(temp):int(0.05/dt+temp),:] += 0.12
     # background noise
+    # I_float_h += 0.07
+    # for i in range(N):
+    #     if i%(N//4) < N//5:
+    #         I_float_h[:,i] += 1.0e-2*np.random.rand(num_steps)
+    #         I_float_h[:,i] += 2.0e-2*np.random.random()
+    #     else:
+    #         I_float_h[:,i] += 1.0e-2*np.random.rand(num_steps)
+    #         I_float_h[:,i] += 2.0e-2*np.random.random()
     # I_float_h += 0.09
-    for i in range(N):
-        if i%(N//4) < N//5:
-            I_float_h[:,i] += 1.5e-1*np.random.rand(num_steps)
-        else:
-            I_float_h[:,i] += 1.5e-1*np.random.rand(num_steps)
+    # for i in range(N):
+    #     if i%(N//4) < N//5:
+    #         I_float_h[:,i] += 1.5e-1*np.random.rand(num_steps)
+    #     else:
+    #         I_float_h[:,i] += 1.5e-1*np.random.rand(num_steps)
     raster_h=np.full(N, 0, dtype=np.uint8)
     PARAM = PARAM_init()
     BIT_WIDTH=18#21
@@ -75,13 +90,14 @@ def main():
     param_h = param_h_init(PARAM,Y,BIT_Y_SHIFT,BIT_WIDTH_FRACTIONAL)
 
     # ---- 重み行列の作成 ----
-    resovoir_origin, mask = create_reservoir_matrix(N)
+    resovoir_origin, mask = create_moduled_matrix(N)
+    # resovoir_origin, mask = create_random_matrix(N)
     resovoir_weight = np.copy(resovoir_origin)
-    resovoir_weight = resovoir_weight*1500/N
+    resovoir_weight = resovoir_weight*10.0
     visualize_matrix(resovoir_origin, plot_num)
     plot_num += 1
 
-    N_S = np.int32(np.count_nonzero(resovoir_weight))
+    N_S = np.count_nonzero(resovoir_weight)
 
     tau_rec_h, tau_inact_h, tau_faci_h, U1_h, U_h, mask_faci_h = synapses_init(resovoir_weight, N, N_S)
     neuron_from_h, calc_matrix_h, neuron_to_h = calc_init(resovoir_weight, N, N_S)
@@ -94,9 +110,11 @@ def main():
     I_float_d = gpuarray.to_gpu(I_float_h)
     param_d, param_d_size = module.get_global("const_param")
     cuda.memcpy_htod(param_d, param_h)
-    x_d = gpuarray.ones(N_S, dtype=np.float32)
+    x_h=np.full(N_S, 0.9, dtype=np.float32)
+    z_h=np.full(N_S, 0.1, dtype=np.float32)
+    x_d = gpuarray.to_gpu(x_h)
     y_d = gpuarray.zeros(N_S, dtype=np.float32)
-    z_d = gpuarray.zeros(N_S, dtype=np.float32)
+    z_d = gpuarray.to_gpu(z_h)
     tau_rec_d = gpuarray.to_gpu(tau_rec_h)
     tau_inact_d = gpuarray.to_gpu(tau_inact_h)
     tau_faci_d = gpuarray.to_gpu(tau_faci_h)
@@ -118,12 +136,16 @@ def main():
     neuron_blocks_per_grid = (N + neuron_threads_per_block - 1) // neuron_threads_per_block
     synapse_threads_per_block =256
     synapse_blocks_per_grid = int((N_S + synapse_threads_per_block - 1) // synapse_threads_per_block)
+    n_int32 = np.int32(N)
+    n_s_int32 = np.int32(N_S)
+    dt_float32 = np.float32(dt)
+    buffer_size_int32 = np.int32(buffer_size)
 
     # 6. シミュレーションループ
     start = time.perf_counter()
     for i in tqdm(range(num_steps)):
     # for i in range(1000):
-        read_idx = int(i%buffer_size)
+        read_idx = np.int32(i%buffer_size)
         update_neuron_state(            #stream1
             Vs_d.gpudata,
             Ns_d.gpudata,
@@ -132,98 +154,71 @@ def main():
             synapses_out_d.gpudata,
             last_spike_d.gpudata,
             raster_d.gpudata,
-            np.int32(N),
+            n_int32,
             np.int32(i),
             block=(neuron_threads_per_block, 1, 1),
             grid=(neuron_blocks_per_grid, 1),
             stream=stream1
         )
-        event.record(stream1)
+        event_update_neuron.record(stream1)
         propagate_spikes(               #stream1
             delayed_spikes_d.gpudata,
             raster_d.gpudata,
             neuron_from_d.gpudata,
             delayed_row_d.gpudata,
-            np.uint32(N_S),
-            np.uint32(read_idx),
-            np.uint32(buffer_size),
+            n_s_int32,
+            read_idx,
+            buffer_size_int32,
             block=(synapse_threads_per_block, 1, 1), 
             grid=(synapse_blocks_per_grid, 1),
             stream=stream1
         )
 
-        copy_arrival_spike(             #stream2
-            arrival_spike_d.gpudata, 
-            delayed_spikes_d.gpudata, 
-            np.int32(read_idx),
-            np.int32(N_S),
-            block=(synapse_threads_per_block, 1, 1), 
-            grid=(synapse_blocks_per_grid, 1),
-            stream=stream2
-        )
         synapses_calc(                   #stream2
             x_d.gpudata,
             y_d.gpudata,
             z_d.gpudata,
-            arrival_spike_d.gpudata,
+            delayed_spikes_d.gpudata,
             mask_faci_d.gpudata,
             tau_rec_d.gpudata,
             tau_inact_d.gpudata,
             tau_faci_d.gpudata,
             U1_d.gpudata,
             U_d.gpudata,
-            np.int32(N_S),
-            np.float32(dt),
+            n_s_int32,
+            read_idx,
+            dt_float32,
             block=(synapse_threads_per_block, 1, 1), 
             grid=(synapse_blocks_per_grid, 1),
             stream=stream2
         )
-        stream3.wait_for_event(event)
-        
-        cuda.memcpy_dtoh_async(Vs_h, Vs_d.gpudata, stream = stream3)
-        cuda.memcpy_dtoh_async(raster_h, raster_d.gpudata, stream = stream3)
-        
-        stream3.synchronize()
-        v[i] = Vs_h
-        rasters[i] = raster_h
-        # if np.count_nonzero(delayed_spikes_d.get()) != 0:
-        #     print(f"step {i}")
-        #     print(f"read_idx: {read_idx}")
-        #     print(raster_h)
-        #     print(delayed_spikes_d.get())
-        #     print(arrival_spike_d.get())
-        #     print(y_d.get())
-        #     print(synapses_out_d.get())
-        #     print(np.dot(calc_matrix_h, y_d.get()))
-        
-        stream1.synchronize()
-        stream2.synchronize()
-        synapses_out_d.fill(0)
+        stream2.wait_for_event(event_update_neuron)
         mat_vec_mul(                     #stream2
             synapses_out_d.gpudata,
             neuron_to_d.gpudata,
             calc_matrix_d.gpudata,
             y_d.gpudata,
-            np.int32(N_S),
+            n_s_int32,
             block=(synapse_threads_per_block, 1, 1),
-            grid=(synapse_blocks_per_grid, 1)
+            grid=(synapse_blocks_per_grid, 1),
+            stream = stream2
         )
-        # hoge = y_d.get()
-        # synapses_out_h = np.dot(calc_matrix_h, hoge)
-        # output[i] = synapses_out_h + I_float_h[i]
-        # synapses_out_d = gpuarray.to_gpu(synapses_out_h)
-        # arrival_spike = arrival_spike_d.get()
-        output[i] = synapses_out_d.get() + I_float_h[i]
-        # if arrival_spike[0] == 1:
-        # # if raster_h[0] == 1:
-        # # if synapses_out_h[0] != 0:
-        #     print(hoge[0])
-        #     print(synapses_out_h[0])
-        #     print(i)
+        event_update_input.record(stream2)
+        
+        stream3.wait_for_event(event_update_neuron)        
+        # cuda.memcpy_dtoh_async(Vs_h, Vs_d.gpudata, stream = stream3)
+        cuda.memcpy_dtoh_async(raster_h, raster_d.gpudata, stream = stream3)
+        stream3.synchronize()
+        # v[i] = Vs_h
+        rasters[i] = raster_h
+        # stream2.synchronize()
+        # input[i] = synapses_out_d.get() + I_float_h[i]
+        
+        stream1.wait_for_event(event_update_input)
 
     end = time.perf_counter()
 
-    # print(np.where(rasters[20000]==1))
+    print(np.where(rasters[20000]==1))
     # print(delayed_row_h)
     # print(calc_matrix_h[0])
     print(f"processing time for {tmax}s simulation mas {(end - start)} s when reservoir_size was {N}")
@@ -231,8 +226,8 @@ def main():
 
     v = v/2**BIT_WIDTH_FRACTIONAL
     # ---- plot simulation result ----
-    plot_single_neuron(0, dt, tmax, num_steps, output, v, plot_num)
-    plot_num += 1
+    # plot_single_neuron(0, dt, tmax, num_steps, input, v, plot_num)
+    # plot_num += 1
 
     plot_raster(dt, tmax, rasters, N, plot_num)
     plot_num += 1
@@ -243,32 +238,32 @@ def main():
 
 def PARAM_init():
     PARAM={}
-    PARAM['dt']=0.0001 # time step [s]  #1
-    PARAM['afn']=1.5625#2
-    PARAM['afp']=-0.5625#3
-    PARAM['bfn']=-1.125#4
-    PARAM['cfn']=0#5
-    PARAM['agn']=1#6
-    PARAM['agp']=10.28125#7
-    PARAM['bgn']=0.40625#8
-    PARAM['cgn']=0#9
-    PARAM['ahn']=0.28125#10
-    PARAM['ahp']=9.125#11
-    PARAM['bhn']=-7.18753125#12
-    PARAM['chn']=-2.8125#13
-    PARAM['tau']=0.0064#14
-    PARAM['I0']=2.375#15
-    PARAM['k']=36.4375#16
-    PARAM['phi']=4.75#17
-    PARAM['epsq']=0.0693359375#18
-    PARAM['rg']=0.0625#19
-    PARAM['rh']=15.71875#20
-    PARAM['bfp']=PARAM['afn']*PARAM['bfn']/PARAM['afp']#24
-    PARAM['cfp']=PARAM['afn']*PARAM['bfn']**2+PARAM['cfn']-PARAM['afp']*PARAM['bfp']**2#25
-    PARAM['bgp']=PARAM['rg']-PARAM['agn']*(PARAM['rg']-PARAM['bgn'])/PARAM['agp']#26
-    PARAM['cgp']=PARAM['agn']*(PARAM['rg']-PARAM['bgn'])**2+PARAM['cgn']-PARAM['agp']*(PARAM['rg']-PARAM['bgp'])**2#27
-    PARAM['bhp']=PARAM['rh']-PARAM['ahn']*(PARAM['rh']-PARAM['bhn'])/PARAM['ahp']#28
-    PARAM['chp']=PARAM['ahn']*(PARAM['rh']-PARAM['bhn'])**2+PARAM['chn']-PARAM['ahp']*(PARAM['rh']-PARAM['bhp'])**2#29
+    PARAM['dt']=0.0001 # time step [s]  #1 a
+    PARAM['afn']=1.5625#2 a
+    PARAM['afp']=-0.5625#3 a
+    PARAM['bfn']=-1.125#4 a
+    PARAM['cfn']=0#5 a
+    PARAM['agn']=1#6 a
+    PARAM['agp']=10.28125#7 a
+    PARAM['bgn']=0.40625#8 a
+    PARAM['cgn']=0#9 a
+    PARAM['ahn']=0.28125#10 a
+    PARAM['ahp']=9.125#11 a
+    PARAM['bhn']=-7.18753125#12 a
+    PARAM['chn']=-2.8125#13 a
+    PARAM['tau']=0.0064#14 a
+    PARAM['I0']=2.375#15 a
+    PARAM['k']=36.4375#16 a
+    PARAM['phi']=4.75#17 a
+    PARAM['epsq']=0.0693359375#18 a
+    PARAM['rg']=0.0625#19 a
+    PARAM['rh']=15.71875#20 a
+    PARAM['bfp']=PARAM['afn']*PARAM['bfn']/PARAM['afp']#24 a
+    PARAM['cfp']=PARAM['afn']*PARAM['bfn']**2+PARAM['cfn']-PARAM['afp']*PARAM['bfp']**2#25 a
+    PARAM['bgp']=PARAM['rg']-PARAM['agn']*(PARAM['rg']-PARAM['bgn'])/PARAM['agp']#26 a
+    PARAM['cgp']=PARAM['agn']*(PARAM['rg']-PARAM['bgn'])**2+PARAM['cgn']-PARAM['agp']*(PARAM['rg']-PARAM['bgp'])**2#27 a
+    PARAM['bhp']=PARAM['rh']-PARAM['ahn']*(PARAM['rh']-PARAM['bhn'])/PARAM['ahp']#28 a
+    PARAM['chp']=PARAM['ahn']*(PARAM['rh']-PARAM['bhn'])**2+PARAM['chn']-PARAM['ahp']*(PARAM['rh']-PARAM['bhp'])**2#29 a
     return PARAM
 
 def Y_init(PARAM,BIT_WIDTH_FRACTIONAL,BIT_Y_SHIFT):
@@ -334,22 +329,22 @@ def param_h_init(PARAM,Y,BID_Y_SHIFT,BID_WIDTH_FRACTIONAL):
     param[26]=Y['rh']
     return param
 
-def create_reservoir_matrix(N):
+def create_moduled_matrix(N):
     resovoir_weight = np.zeros((N, N))
     crust_idx = 0
-    G = 0.05
+    G = 0.1
     p = 0.05
     while crust_idx != 4:
         i1 = int(crust_idx * N / 4)
         i2 = int((crust_idx + 1) * N / 4)
-        resovoir_weight[i1:i2, i1:i2] = ((G * np.random.randn(N//4, N//4)) / (np.sqrt(N) * p) + 1) * (np.random.rand(N//4, N//4) < p)
+        resovoir_weight[i1:i2, i1:i2] = ((G * np.random.randn(N//4, N//4)) + 1) * (np.random.rand(N//4, N//4) < p)
         # print(resovoir_weight[i1:i2, i1:i2])
         crust_idx += 1
 
     #クラスター間の接続
     M = 4
-    G = 0.001
-    p = 0.001
+    G = 0.1
+    p = 0.01
     for hoge in range(M):
         i_range1 = int((hoge*N/4)%N)
         i_range2 = int((hoge+1)*N/4)
@@ -359,7 +354,7 @@ def create_reservoir_matrix(N):
         j_range2 = int((hoge+2)*N/4)
         if j_range2 > N:
             j_range2 = j_range2 % N
-        resovoir_weight[i_range1:i_range2, j_range1:j_range2] = ((G * np.random.randn(N//4, N//4)) / (np.sqrt(N) * p) + 1) * (np.random.rand(N//4, N//4) < p)
+        resovoir_weight[i_range1:i_range2, j_range1:j_range2] = ((G * np.random.randn(N//4, N//4)) + 1) * (np.random.rand(N//4, N//4) < p)
 
         i_range1 = int(((hoge+1)*N/4)%N)
         i_range2 = int((hoge+2)*N/4)
@@ -369,7 +364,7 @@ def create_reservoir_matrix(N):
         j_range2 = int((hoge+1)*N/4)
         if j_range2 > N:
             j_range2 = j_range2 % N
-        resovoir_weight[i_range1:i_range2, j_range1:j_range2] = ((G * np.random.randn(N//4, N//4)) / (np.sqrt(N) * p) + 1) * (np.random.rand(N//4, N//4) < p)
+        resovoir_weight[i_range1:i_range2, j_range1:j_range2] = ((G * np.random.randn(N//4, N//4)) + 1) * (np.random.rand(N//4, N//4) < p)
 
     # 抑制結合の設定
     base_mask = np.ones((N, int(N/4)))
@@ -382,20 +377,38 @@ def create_reservoir_matrix(N):
 
     return resovoir_weight, mask
 
+def create_random_matrix(N):
+    resovoir_weight = np.zeros((N, N))
+    G = 0.1
+    p = 0.05
+    resovoir_weight = ((G * np.random.randn(N, N)) + 1) * (np.random.rand(N, N) < p)
+
+    # 抑制結合の設定
+    mask = np.ones((N, N))
+    mask[:, int(4*N/5):] = -1
+    resovoir_weight = resovoir_weight * mask
+    # resovoir_weight = np.zeros((N, N))#test
+    # resovoir_weight[0, 1] = 1       #test
+    mask = (resovoir_weight != 0) * mask
+
+    return resovoir_weight, mask
+
 def synapses_init(resovoir_weight, N, N_S):
-    tau_rec = np.full(N_S, 1.0, dtype=np.float32)
+    tau_rec = np.full(N_S, 5.5, dtype=np.float32)
     tau_inact = np.full(N_S, 0.003, dtype=np.float32)
     tau_faci = np.full(N_S, 0.53, dtype=np.float32)
     U1 = np.full(N_S, 0.03, dtype=np.float32)
-    U = np.full(N_S, 0.5, dtype=np.float32)
+    U = np.full(N_S, 0.1, dtype=np.float32)
     mask_faci = np.zeros(N_S, dtype=np.uint8)
     col_indices, row_indices = np.where(resovoir_weight.T != 0)
     for i in range(N_S):
         r = row_indices[i]
         c = col_indices[i]
-        if resovoir_weight[r, c] < 0:
+        if r%(N//4) > N//5 or resovoir_weight[r, c] < 0:
             mask_faci[i] = 1
             U[i] = 0
+            tau_rec[i] = 0.1
+            tau_inact[i] = 0.0015
         # if r == c and c%(N//4) < N//5:
         #     U[i] = 0.1
         #     tau_rec[i] = 0.1
@@ -417,7 +430,8 @@ def calc_init(resovoir_weight, N, N_S):
     return neuron_from, resovoir_weight_calc, neuron_to
 
 def delay_init(resovoir_weight, N, N_S, mask):
-    delays = np.random.randint(8, 13, size=(N,N))
+    delays = np.random.randint(10, 700, size=(N,N))
+    # delays = (40 + 7.5*np.random.randn(N, N)).astype(np.int32)
     delays = delays * (mask != 0)
     delay_row = np.zeros(N_S, dtype=np.int32)
     col_indices, row_indices = np.where(resovoir_weight.T != 0)
@@ -462,7 +476,7 @@ def plot_raster(dt, tmax, rasters, N, num):
     cluster_id = ((neuron_ids) // (N // 4))  # 0,1,2,3 のクラスタID
     colors = [cluster_colors[c % 4] for c in cluster_id]
     plt.figure(num=num, figsize=(9, 5))
-    plt.scatter(times, neuron_ids, s=1, color=colors)
+    plt.scatter(times, neuron_ids, s=1.0, color=colors)
     plt.xlabel("time")
     plt.xlim(0, tmax)
     plt.ylabel("neuron ID")

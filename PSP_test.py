@@ -14,7 +14,7 @@ if __name__ == "__main__":
     dt = 0.0001
 
     # set a synapse
-    synapses_out1 = tsodyks_markram(N, dt=dt, U=0.5)
+    synapses_out1 = tsodyks_markram(N, dt=dt, tau_rec=0.5, U=0.5)
 
     #initialization
     # length of simulation [s]
@@ -39,26 +39,25 @@ if __name__ == "__main__":
     output = np.zeros((number_of_iterations, N))
     cols = np.arange(output.shape[1])
     next_input = np.zeros(N)
-    synapses_out1.mask_faci[0]=1
-    synapses_out1.U[0]=0
-    synapses_out1.tau_inact[0]=0.0015
-    synapses_out1.tau_rec[0]=0.13
+    # synapses_out1.mask_faci[0]=1
+    # synapses_out1.U[0]=0
+    # synapses_out1.tau_inact[0]=0.0015
+    # synapses_out1.tau_rec[0]=0.13
 
     # run simulatiion
     start = time.perf_counter()
     for i in tqdm(range(number_of_iterations)):
         I[i] += next_input.flatten()
         v0[i] = cell0.calc(inputs=I[i], itr=i)  # update cell state
-        next_input = 1.54 * synapses_out1(rasters[i])  # [nA]
+        next_input = 0.25 * synapses_out1(rasters[i])  # [nA]
     end = time.perf_counter()
     print(f"processing time for {tmax}s simulation mas {(end - start)} s when reservoir_size was {N}")
 
     # plot simulation result
     fig = plt.figure(num=2, figsize=(10,4))
-    spec = gridspec.GridSpec(ncols=1, nrows=3, figure=fig, hspace=0.1, height_ratios=[1, 4, 4])
+    spec = gridspec.GridSpec(ncols=1, nrows=2, figure=fig, hspace=0.1, height_ratios=[1, 4])
     ax0 = fig.add_subplot(spec[0])
     ax1 = fig.add_subplot(spec[1])
-    ax2 = fig.add_subplot(spec[2])
     times, neuron_ids = np.nonzero(rasters)
     ax0.set_xticks([])
     ax0.plot([i*dt for i in range(0, number_of_iterations)], I[:,0], color="black")
@@ -66,12 +65,8 @@ if __name__ == "__main__":
     ax1.plot([i*dt for i in range(0, number_of_iterations)], v0[:,0])    
     ax1.set_xlim(0, tmax)
     ax1.set_ylabel("v")
-    ax1.set_xticks([])
-    ax2.plot([i*dt for i in range(0, number_of_iterations)], output[:number_of_iterations,0])
-    ax2.set_xlim(0, tmax)
-    ax2.set_ylabel("synapse output")
     ax0.set_ylabel("I")
-    ax2.set_xlabel("[s]")
+    ax1.set_xlabel("[s]")
     fig.savefig("single_neuron.png")
 
     times, neuron_ids = np.nonzero(rasters)

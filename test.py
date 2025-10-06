@@ -20,8 +20,8 @@ if __name__ == "__main__":
     # you can use RSexci, RSinhi, FS, LTS, IB, EB, PB, or Class2 mode
     # N = int(input("number of neurons: "))
     N=1
-    # cell0=PQNModel(mode='RSexci', N = N)
-    cell0=LIF(N=N)
+    cell0=PQNModel(mode='RSexci', N = N)
+    # cell0=LIF(N=N)
     dt = 0.0001
     # dt = cell0.PARAM['dt']
 
@@ -46,7 +46,7 @@ if __name__ == "__main__":
     delays = np.full(N, delay-1)  # uniform delay for all neurons
     # delays = np.random.randint(0, delay, size=N)  # delay for each neuron
     I=np.zeros((number_of_iterations, N))
-    I[int(0.0/dt):int(0.075/dt),0] = 0.13
+    # I[int(0.0/dt):int(0.075/dt),0] = 0.13
     rasters = np.zeros((number_of_iterations, N))
     output = np.zeros((number_of_iterations+delay, N))
     cols = np.arange(output.shape[1])
@@ -55,32 +55,31 @@ if __name__ == "__main__":
     # run simulatiion
     start = time.perf_counter()
     for i in tqdm(range(number_of_iterations)):
-        I[i] += output[i]
-        rasters[i], v0[i] = cell0.calc(inputs=I[i], itr=i)  # update cell state
-        rows = delays + i
-        output[rows, cols] = 6*synapses_out1(rasters[i])  # [nA]
+        # I[i] += output[i]
+        # rasters[i], v0[i] = cell0.calc(inputs=I[i], itr=i)  # update cell state
+        # rows = delays + i
+        # output[rows, cols] = 6*synapses_out1(rasters[i])  # [nA]
+        I[i] += next_input
+        _, v0[i] = cell0.calc(inputs=I[i], itr=i)  # update cell state
+        if i%1000 == 500:
+            rasters[i] = 1
+        next_input = synapses_out1(rasters[i])  # [nA]
     end = time.perf_counter()
     print(f"processing time for {tmax}s simulation mas {(end - start)} s when reservoir_size was {N}")
 
     # plot simulation result
     fig = plt.figure(num=2, figsize=(10,4))
-    spec = gridspec.GridSpec(ncols=1, nrows=3, figure=fig, hspace=0.1, height_ratios=[1, 4, 4])
+    spec = gridspec.GridSpec(ncols=1, nrows=2, figure=fig, hspace=0.1, height_ratios=[1, 4])
     ax0 = fig.add_subplot(spec[0])
     ax1 = fig.add_subplot(spec[1])
-    ax2 = fig.add_subplot(spec[2])
-    times, neuron_ids = np.nonzero(rasters)
     ax0.set_xticks([])
     ax0.plot([i*dt for i in range(0, number_of_iterations)], I[:,0], color="black")
     ax0.set_xlim(0, tmax)
     ax1.plot([i*dt for i in range(0, number_of_iterations)], v0[:,0])    
     ax1.set_xlim(0, tmax)
     ax1.set_ylabel("v")
-    ax1.set_xticks([])
-    ax2.plot([i*dt for i in range(0, number_of_iterations)], output[:number_of_iterations,0])
-    ax2.set_xlim(0, tmax)
-    ax2.set_ylabel("synapse output")
     ax0.set_ylabel("I")
-    ax2.set_xlabel("[s]")
+    ax1.set_xlabel("[s]")
     fig.savefig("single_neuron.png")
 
     times, neuron_ids = np.nonzero(rasters)
@@ -94,6 +93,6 @@ if __name__ == "__main__":
     plt.ylim(0, N)
     plt.title("Raster Plot")
     plt.tight_layout()
-    plt.show()
+    # plt.show()
 
     plt.savefig("raster.png")
