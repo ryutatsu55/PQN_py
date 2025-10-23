@@ -134,12 +134,13 @@ def main():
 
 
         # --- export simulation results to CSV ---
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
-    outdir = f"sim_results/SEED{SEED}_{timestamp}"
+    date = time.strftime("%Y%m%d")
+    timestamp = time.strftime("%H:%M")
+    outdir = f"sim_results/{date}"
     os.makedirs(outdir, exist_ok=True)
 
     def fname(base):
-        return os.path.join(outdir, f"{base}_seed{SEED}_{timestamp}.csv")
+        return os.path.join(outdir, f"{timestamp}_SEED{SEED}_{base}.csv")
 
     # # times_vec = times
     # # np.savetxt(fname("times"), times_vec, delimiter=",", header="t_s", comments="", fmt="%.9f",)

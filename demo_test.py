@@ -12,9 +12,6 @@ import random
 
 if __name__ == "__main__":
     seed = int(random.random() * 1000)
-    # seed = 3  # random seed for reproducibility
-    ##やることリスト
-    #学習アルゴリズム追加
 
     # set a PQN cell
     # you can use RSexci, RSinhi, FS, LTS, IB, EB, PB, or Class2 mode
