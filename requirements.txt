@@ -3,3 +3,5 @@ matplotlib
 tqdm
 networkx
 line_profiler
+cupy-cuda13x
+pycuda
