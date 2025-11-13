@@ -45,15 +45,27 @@ mat_vec_mul = module.get_function("mat_vec_mul")
 # -------------------------------------------------------------
 # 2. メイン処理
 # -------------------------------------------------------------
-def main():
+def main(input_data: np.ndarray | None = None, label: str = "unknown"):
+    """
+    SNNシミュレーションのメイン関数
+    Parameters:
+        input_data: np.ndarray or None
+            shape = (T, N_in)
+            cochleagram or other time-series input.
+    """
     # --- 初期設定 ---
     N = 100
     tmax = 10  # [s]
     dt = 1e-4
-    num_steps = int(tmax/dt)
-    v = np.zeros((num_steps,N))
-    rasters = np.zeros((num_steps,N), dtype=np.uint8)
-    input = np.zeros((num_steps,N), dtype=np.float32)
+    # --- 外部入力がある場合はシミュレーション長とtmaxを調整 ---
+    if input_data is not None:
+        num_steps = input_data.shape[0]
+        tmax = num_steps * dt
+    else:
+        num_steps = int(tmax / dt)
+    v = np.zeros((num_steps, N))
+    rasters = np.zeros((num_steps, N), dtype=np.uint8)
+    input = np.zeros((num_steps, N), dtype=np.float32)
     buffer_size = 1001
     plot_num = 0
 
@@ -163,9 +175,19 @@ def main():
 
     # 5. カーネルの実行設定
     neuron_threads_per_block = 256
-    neuron_blocks_per_grid = (N + neuron_threads_per_block - 1) // neuron_threads_per_block
-    synapse_threads_per_block =256
-    synapse_blocks_per_grid = int((N_S + synapse_threads_per_block - 1) // synapse_threads_per_block)
+    neuron_blocks_per_grid = (
+        N + neuron_threads_per_block - 1
+    ) // neuron_threads_per_block
+    synapse_threads_per_block = 256
+    synapse_blocks_per_grid = int(
+        (N_S + synapse_threads_per_block - 1) // synapse_threads_per_block
+    )
+
+    # 入力次元チェック
+    if input_data is not None:
+        N_input = input_data.shape[1]
+        if N_input != N:
+            raise ValueError(f"Input dimension mismatch: expected N={N}, got {N_input}")
 
     # 6. シミュレーションループ
     start = time.perf_counter()
@@ -228,14 +250,15 @@ def main():
             stream=stream2,
         )
         event_update_input.record(stream2)
-        
-        stream3.wait_for_event(event_update_neuron)        
-        cuda.memcpy_dtoh_async(Vs_h, Vs_d.gpudata, stream = stream3)
-        cuda.memcpy_dtoh_async(rasters[i], raster_d.gpudata, stream = stream3)
-        
-        if ( i % 10000 == 0 ):
-            spike_in_h = (np.random.rand(N) < 0.1).astype(np.uint8)
-            # spike_in_h = np.ones(N, dtype=np.uint8)
+
+        stream3.wait_for_event(event_update_neuron)
+        cuda.memcpy_dtoh_async(Vs_h, Vs_d.gpudata, stream=stream3)
+        cuda.memcpy_dtoh_async(rasters[i], raster_d.gpudata, stream=stream3)
+
+        if input_data is not None and i < num_steps:
+            # cochleagram → スパイク確率へ変換
+            prob = 1 / (1 + np.exp(-input_data[i]))  # sigmoid
+            spike_in_h = (np.random.rand(N) < prob).astype(np.uint8)
         else:
             spike_in_h = np.zeros(N, dtype=np.uint8)
         cuda.memcpy_htod_async(spike_in_d.gpudata, spike_in_h, stream=stream3)
@@ -259,7 +282,7 @@ def main():
 
     v = v / 2**RSexci.BIT_WIDTH_FRACTIONAL
     # ---- plot simulation result ----
-    plot_single_neuron(0, dt, tmax, num_steps, input, v, plot_num)
+    plot_single_neuron(0, dt, tmax, num_steps, input, v, plot_num, label)
     plot_num += 1
 
     plot_raster(dt, tmax, rasters, N, plot_num)
@@ -461,7 +484,7 @@ def visualize_matrix(matrix, num):
         plt.savefig(save_path)
 
 
-def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, num):
+def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, num, label):
     fig = plt.figure(num=num, figsize=(10, 4))
     spec = gridspec.GridSpec(
         ncols=1, nrows=2, figure=fig, hspace=0.1, height_ratios=[1, 4]
@@ -479,7 +502,7 @@ def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, num):
     save_path = os.path.join("graphs", "single_neuron.png")
     plt.savefig(save_path)
     if record:
-        save_path = os.path.join(OUTDIR, "single_neuron.png")
+        save_path = os.path.join(OUTDIR, f"single_neuron_{label}.png")
         plt.savefig(save_path)
 
 
@@ -510,4 +533,7 @@ if __name__ == "__main__":
     # profiler.add_function(main)
     # profiler.runcall(main)
     # profiler.print_stats()
-    main()
+
+    coch = np.load("coch_zero.npy")
+
+    main(input_data=coch, label="cochleagram")
