@@ -1,9 +1,11 @@
 import numpy as np
 import glob
 import argparse
+from datetime import datetime
 
 from tqdm import tqdm
 from GPU_SNN_simulation import main  # あなたのSNN
+import matplotlib.pyplot as plt
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -170,7 +172,6 @@ def main_train():
     print(f"True ONE predicted as ONE:   {conf[1,1]} / {conf[1].sum()}\n")
 
     # --- Save confusion matrix as image ---
-    import matplotlib.pyplot as plt
 
     plt.figure(figsize=(4, 4))
     plt.imshow(conf, cmap="Blues")
@@ -192,20 +193,24 @@ def main_train():
                 ha="center",
                 va="center",
                 color="black",
-                fontsize=24,
+                fontsize=28,
+                fontweight="bold",
             )
 
     plt.colorbar()
     plt.tight_layout()
-    plt.savefig("graphs/confusion_matrix.png")
+
+    timestamp = datetime.now().strftime("%Y%m%d%H%M")
+    filename = f"confusion_matrix_{timestamp}.png"
+    plt.savefig(f"graphs/confusion_matrix/{filename}")
     plt.close()
-    print("Saved confusion_matrix.png")
+    print(f"Saved {filename}")
 
     print(f"Train Accuracy: {acc_train * 100:.2f}%")
     print(f"Test Accuracy:  {acc_test * 100:.2f}%")
 
     # 保存
-    np.save("W_out.npy", W_out)
+    np.save("outputs/W_out.npy", W_out)
     print("Saved W_out.npy")
 
 
