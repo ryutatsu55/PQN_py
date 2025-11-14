@@ -299,6 +299,8 @@ def main(
     # plt.show()
 
     if return_feature:
+        plt.close("all")
+        
         firing_rate = rasters.mean(axis=0).astype(np.float32)  # shape = (100,)
         return firing_rate
 
