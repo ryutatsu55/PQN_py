@@ -45,7 +45,11 @@ mat_vec_mul = module.get_function("mat_vec_mul")
 # -------------------------------------------------------------
 # 2. メイン処理
 # -------------------------------------------------------------
-def main(input_data: np.ndarray | None = None, label: str = "unknown"):
+def main(
+    input_data: np.ndarray | None = None,
+    label: str = "unknown",
+    return_feature: bool = False,
+):
     """
     SNNシミュレーションのメイン関数
     Parameters:
@@ -289,6 +293,10 @@ def main(input_data: np.ndarray | None = None, label: str = "unknown"):
     plot_num += 1
 
     # plt.show()
+
+    if return_feature:
+        firing_rate = rasters.mean(axis=0).astype(np.float32)  # shape = (100,)
+        return firing_rate
 
 
 def param_h_init(PQN):
