@@ -112,3 +112,5 @@ graphs/*
 .vscode/*
 
 inputs/*
+
+outputs/*
