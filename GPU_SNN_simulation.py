@@ -68,6 +68,13 @@ def main(
         tmax = num_steps * dt
     else:
         num_steps = int(tmax / dt)
+    # CPU-side linear projection of input_data (M -> N)
+    projected_input = None
+    if input_data is not None:
+        M = input_data.shape[1]
+        rng = np.random.default_rng(42)
+        W_in = rng.normal(0, 1, size=(M, N)).astype(np.float32)
+        projected_input = input_data @ W_in
     v = np.zeros((num_steps, N))
     rasters = np.zeros((num_steps, N), dtype=np.uint8)
     input = np.zeros((num_steps, N), dtype=np.float32)
@@ -188,12 +195,6 @@ def main(
         (N_S + synapse_threads_per_block - 1) // synapse_threads_per_block
     )
 
-    # 入力次元チェック
-    if input_data is not None:
-        N_input = input_data.shape[1]
-        if N_input != N:
-            raise ValueError(f"Input dimension mismatch: expected N={N}, got {N_input}")
-
     # 6. シミュレーションループ
     start = time.perf_counter()
     # tqdm を return_feature=True のとき無効化
@@ -263,9 +264,8 @@ def main(
         cuda.memcpy_dtoh_async(Vs_h, Vs_d.gpudata, stream=stream3)
         cuda.memcpy_dtoh_async(rasters[i], raster_d.gpudata, stream=stream3)
 
-        if input_data is not None and i < num_steps:
-            # cochleagram → スパイク確率へ変換
-            prob = 1 / (1 + np.exp(-input_data[i]))  # sigmoid
+        if projected_input is not None and i < num_steps:
+            prob = 1 / (1 + np.exp(-projected_input[i]))  # sigmoid on projected input
             spike_in_h = (np.random.rand(N) < prob).astype(np.uint8)
         else:
             spike_in_h = np.zeros(N, dtype=np.uint8)
@@ -300,7 +300,7 @@ def main(
 
     if return_feature:
         plt.close("all")
-        
+
         firing_rate = rasters.mean(axis=0).astype(np.float32)  # shape = (100,)
         return firing_rate
 
