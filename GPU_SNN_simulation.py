@@ -49,7 +49,7 @@ def main(
     input_data: np.ndarray | None = None,
     label: str = "unknown",
     return_feature: bool = False,
-    isTQDM: bool = True,
+    isDebugPrint: bool = True,
 ):
     """
     SNNシミュレーションのメイン関数
@@ -197,7 +197,7 @@ def main(
     # 6. シミュレーションループ
     start = time.perf_counter()
     # tqdm を return_feature=True のとき無効化
-    loop_iter = tqdm(range(num_steps)) if isTQDM else range(num_steps)
+    loop_iter = tqdm(range(num_steps)) if isDebugPrint else range(num_steps)
 
     for i in loop_iter:
         read_idx = np.int32(i % buffer_size)
@@ -283,11 +283,11 @@ def main(
 
     end = time.perf_counter()
 
-    print(
-        f"processing time for {tmax}s simulation mas {(end - start)} s when reservoir_size was {N}"
-    )
-    print(f"SEED value was {SEED}")
-
+    if isDebugPrint:
+        print(
+            f"processing time for {tmax}s simulation mas {(end - start)} s when reservoir_size was {N}"
+        )
+        print(f"SEED value was {SEED}")
     v = v / 2**RSexci.BIT_WIDTH_FRACTIONAL
     # ---- plot simulation result ----
     plot_single_neuron(0, dt, tmax, num_steps, input, v, plot_num, label)

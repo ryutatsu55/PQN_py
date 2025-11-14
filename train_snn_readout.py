@@ -1,5 +1,7 @@
 import numpy as np
 import glob
+
+from tqdm import tqdm
 from GPU_SNN_simulation import main  # あなたのSNN
 
 
@@ -11,16 +13,16 @@ def load_dataset():
     y_list = []
 
     # ZERO
-    for path in glob.glob("inputs/coch_zero/*.npy"):
+    for path in tqdm(glob.glob("inputs/coch_zero/*.npy")):
         coch = np.load(path)
-        feat = main(input_data=coch, label="zero", return_feature=True, isTQDM=False)
+        feat = main(input_data=coch, label="zero", return_feature=True, isDebugPrint=False)
         X_list.append(feat)
         y_list.append(0)
 
     # ONE
-    for path in glob.glob("inputs/coch_one/*.npy"):
+    for path in tqdm(glob.glob("inputs/coch_one/*.npy")):
         coch = np.load(path)
-        feat = main(input_data=coch, label="one", return_feature=True, isTQDM=False)
+        feat = main(input_data=coch, label="one", return_feature=True, isDebugPrint=False)
         X_list.append(feat)
         y_list.append(1)
 
