@@ -138,6 +138,38 @@ def main_train():
     print(f"\nTrue ZERO predicted as ZERO: {conf[0,0]} / {conf[0].sum()}")
     print(f"True ONE predicted as ONE:   {conf[1,1]} / {conf[1].sum()}\n")
 
+    # --- Save confusion matrix as image ---
+    import matplotlib.pyplot as plt
+
+    plt.figure(figsize=(4, 4))
+    plt.imshow(conf, cmap="Blues")
+    plt.title("Confusion Matrix")
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
+
+    # set axis ticks (only 0 and 1)
+    plt.xticks([0, 1], ["0", "1"])
+    plt.yticks([0, 1], ["0", "1"])
+
+    # annotate cells
+    for i in range(num_classes):
+        for j in range(num_classes):
+            plt.text(
+                j,
+                i,
+                str(conf[i, j]),
+                ha="center",
+                va="center",
+                color="black",
+                fontsize=24,
+            )
+
+    plt.colorbar()
+    plt.tight_layout()
+    plt.savefig("graphs/confusion_matrix.png")
+    plt.close()
+    print("Saved confusion_matrix.png")
+
     print(f"Train Accuracy: {acc_train * 100:.2f}%")
     print(f"Test Accuracy:  {acc_test * 100:.2f}%")
 
