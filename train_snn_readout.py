@@ -1,8 +1,18 @@
 import numpy as np
 import glob
+import argparse
 
 from tqdm import tqdm
 from GPU_SNN_simulation import main  # あなたのSNN
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--mode",
+    choices=["snn", "feature"],
+    default="feature",
+    help="snn: run SNN to compute features, feature: load saved feature .npy",
+)
+args = parser.parse_args()
 
 
 # ================================
@@ -12,23 +22,40 @@ def load_dataset():
     X_list = []
     y_list = []
 
-    # ZERO
-    for path in tqdm(glob.glob("inputs/coch_zero/*.npy")):
-        coch = np.load(path)
-        feat = main(input_data=coch, label="zero", return_feature=True, isDebugPrint=False)
-        X_list.append(feat)
-        y_list.append(0)
+    if args.mode == "snn":
+        # ZERO
+        for path in tqdm(glob.glob("inputs/coch_zero/*.npy"), desc="ZERO"):
+            coch = np.load(path)
+            feat = main(
+                input_data=coch, label="zero", return_feature=True, isDebugPrint=False
+            )
+            X_list.append(feat)
+            y_list.append(0)
 
-    # ONE
-    for path in tqdm(glob.glob("inputs/coch_one/*.npy")):
-        coch = np.load(path)
-        feat = main(input_data=coch, label="one", return_feature=True, isDebugPrint=False)
-        X_list.append(feat)
-        y_list.append(1)
+        # ONE
+        for path in tqdm(glob.glob("inputs/coch_one/*.npy"), desc="ONE"):
+            coch = np.load(path)
+            feat = main(
+                input_data=coch, label="one", return_feature=True, isDebugPrint=False
+            )
+            X_list.append(feat)
+            y_list.append(1)
 
-    X = np.stack(X_list, axis=0)  # shape = (num_samples, 100)
+    elif args.mode == "feature":
+        # ZERO features
+        for path in tqdm(glob.glob("outputs/features_zero/*.npy"), desc="ZERO"):
+            feat = np.load(path)
+            X_list.append(feat)
+            y_list.append(0)
+
+        # ONE features
+        for path in tqdm(glob.glob("outputs/features_one/*.npy"), desc="ONE"):
+            feat = np.load(path)
+            X_list.append(feat)
+            y_list.append(1)
+
+    X = np.stack(X_list, axis=0)
     y = np.array(y_list)
-
     return X, y
 
 
@@ -78,6 +105,7 @@ def evaluate(W_out, X, y):
 # 5. メイン処理
 # ================================
 def main_train():
+    print(f"Mode: {args.mode}")
     print("Loading dataset...")
     X, y = load_dataset()  # 特徴生成＋ラベル読み込み
     print("Shape of X:", X.shape)  # (num_samples, 100)
