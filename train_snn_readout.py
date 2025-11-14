@@ -126,6 +126,18 @@ def main_train():
     acc_train = evaluate(W_out, X_train, y_train)
     acc_test = evaluate(W_out, X_test, y_test)
 
+    # --- Confusion Matrix (2x2) ---
+    num_classes = 2
+    conf = np.zeros((num_classes, num_classes), dtype=int)
+    for feat, true_label in zip(X_test, y_test):
+        pred_label = predict(W_out, feat)
+        conf[true_label, pred_label] += 1
+
+    print("\nConfusion Matrix (rows=True, cols=Pred):")
+    print(conf)
+    print(f"\nTrue ZERO predicted as ZERO: {conf[0,0]} / {conf[0].sum()}")
+    print(f"True ONE predicted as ONE:   {conf[1,1]} / {conf[1].sum()}\n")
+
     print(f"Train Accuracy: {acc_train * 100:.2f}%")
     print(f"Test Accuracy:  {acc_test * 100:.2f}%")
 
