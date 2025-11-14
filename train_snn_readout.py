@@ -13,14 +13,14 @@ def load_dataset():
     # ZERO
     for path in glob.glob("inputs/coch_zero/*.npy"):
         coch = np.load(path)
-        feat = main(input_data=coch, label="zero", return_feature=True)
+        feat = main(input_data=coch, label="zero", return_feature=True, isTQDM=False)
         X_list.append(feat)
         y_list.append(0)
 
     # ONE
     for path in glob.glob("inputs/coch_one/*.npy"):
         coch = np.load(path)
-        feat = main(input_data=coch, label="one", return_feature=True)
+        feat = main(input_data=coch, label="one", return_feature=True, isTQDM=False)
         X_list.append(feat)
         y_list.append(1)
 

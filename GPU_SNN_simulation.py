@@ -49,6 +49,7 @@ def main(
     input_data: np.ndarray | None = None,
     label: str = "unknown",
     return_feature: bool = False,
+    isTQDM: bool = True,
 ):
     """
     SNNシミュレーションのメイン関数
@@ -195,7 +196,10 @@ def main(
 
     # 6. シミュレーションループ
     start = time.perf_counter()
-    for i in tqdm(range(num_steps)):
+    # tqdm を return_feature=True のとき無効化
+    loop_iter = tqdm(range(num_steps)) if isTQDM else range(num_steps)
+
+    for i in loop_iter:
         read_idx = np.int32(i % buffer_size)
         update_neuron_state(  # stream1
             Vs_d.gpudata,
