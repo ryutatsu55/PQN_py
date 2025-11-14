@@ -18,45 +18,84 @@ args = parser.parse_args()
 # ================================
 # 1. データ読み込み関数
 # ================================
-def load_dataset():
-    X_list = []
-    y_list = []
+def load_dataset_split():
+    X_train, y_train = [], []
+    X_test, y_test = [], []
 
+    # ----- TRAIN -----
     if args.mode == "snn":
         # ZERO
-        for path in tqdm(glob.glob("inputs/coch_zero/*.npy"), desc="ZERO"):
+        for path in tqdm(glob.glob("inputs/train/coch_zero/*.npy"), desc="TRAIN ZERO"):
             coch = np.load(path)
             feat = main(
                 input_data=coch, label="zero", return_feature=True, isDebugPrint=False
             )
-            X_list.append(feat)
-            y_list.append(0)
+            X_train.append(feat)
+            y_train.append(0)
 
         # ONE
-        for path in tqdm(glob.glob("inputs/coch_one/*.npy"), desc="ONE"):
+        for path in tqdm(glob.glob("inputs/train/coch_one/*.npy"), desc="TRAIN ONE"):
             coch = np.load(path)
             feat = main(
                 input_data=coch, label="one", return_feature=True, isDebugPrint=False
             )
-            X_list.append(feat)
-            y_list.append(1)
-
+            X_train.append(feat)
+            y_train.append(1)
     elif args.mode == "feature":
         # ZERO features
-        for path in tqdm(glob.glob("outputs/features_zero/*.npy"), desc="ZERO"):
+        for path in tqdm(
+            glob.glob("outputs/train/features_zero/*.npy"), desc="TRAIN ZERO"
+        ):
             feat = np.load(path)
-            X_list.append(feat)
-            y_list.append(0)
-
+            X_train.append(feat)
+            y_train.append(0)
         # ONE features
-        for path in tqdm(glob.glob("outputs/features_one/*.npy"), desc="ONE"):
+        for path in tqdm(
+            glob.glob("outputs/train/features_one/*.npy"), desc="TRAIN ONE"
+        ):
             feat = np.load(path)
-            X_list.append(feat)
-            y_list.append(1)
+            X_train.append(feat)
+            y_train.append(1)
 
-    X = np.stack(X_list, axis=0)
-    y = np.array(y_list)
-    return X, y
+    # ----- TEST -----
+    if args.mode == "snn":
+        # ZERO
+        for path in tqdm(glob.glob("inputs/test/coch_zero/*.npy"), desc="TEST ZERO"):
+            coch = np.load(path)
+            feat = main(
+                input_data=coch, label="zero", return_feature=True, isDebugPrint=False
+            )
+            X_test.append(feat)
+            y_test.append(0)
+
+        # ONE
+        for path in tqdm(glob.glob("inputs/test/coch_one/*.npy"), desc="TEST ONE"):
+            coch = np.load(path)
+            feat = main(
+                input_data=coch, label="one", return_feature=True, isDebugPrint=False
+            )
+            X_test.append(feat)
+            y_test.append(1)
+    elif args.mode == "feature":
+        # ZERO features
+        for path in tqdm(
+            glob.glob("outputs/test/features_zero/*.npy"), desc="TEST ZERO"
+        ):
+            feat = np.load(path)
+            X_test.append(feat)
+            y_test.append(0)
+        # ONE features
+        for path in tqdm(glob.glob("outputs/test/features_one/*.npy"), desc="TEST ONE"):
+            feat = np.load(path)
+            X_test.append(feat)
+            y_test.append(1)
+
+    return (
+        np.stack(X_train, axis=0),
+        np.array(y_train),
+        np.stack(X_test, axis=0),
+        np.array(y_test),
+    )
 
 
 # ================================
@@ -107,17 +146,9 @@ def evaluate(W_out, X, y):
 def main_train():
     print(f"Mode: {args.mode}")
     print("Loading dataset...")
-    X, y = load_dataset()  # 特徴生成＋ラベル読み込み
-    print("Shape of X:", X.shape)  # (num_samples, 100)
-
-    # シャッフル
-    perm = np.random.permutation(len(X))
-    X, y = X[perm], y[perm]
-
-    # train/test split
-    split = int(len(X) * 0.8)
-    X_train, y_train = X[:split], y[:split]
-    X_test, y_test = X[split:], y[split:]
+    X_train, y_train, X_test, y_test = load_dataset_split()
+    print("Train shape:", X_train.shape)
+    print("Test  shape:", X_test.shape)
 
     print("Training readout...")
     W_out = train_readout(X_train, y_train, lambda_reg=1e-2)

@@ -4,6 +4,9 @@ import os
 from tqdm import tqdm
 import GPU_SNN_simulation  # あなたの SNN main()
 
+os.makedirs("outputs/train", exist_ok=True)
+os.makedirs("outputs/test", exist_ok=True)
+
 
 # ================================
 # SNN の出力特徴を保存する関数
@@ -20,14 +23,11 @@ def process_and_save(input_dir, output_dir, label):
 
         # ---- SNN 実行（特徴ベクトルを得る） ----
         feat = GPU_SNN_simulation.main(
-            input_data=coch,
-            label=label,
-            return_feature=True,
-            isDebugPrint=False
+            input_data=coch, label=label, return_feature=True, isDebugPrint=False
         )  # shape = (100,) or (200,)
 
         # ---- 保存するファイル名 ----
-        filename = os.path.basename(path)          # ex: zero_01.npy
+        filename = os.path.basename(path)  # ex: zero_01.npy
         save_path = os.path.join(output_dir, filename)
 
         # ---- 保存 ----
@@ -41,16 +41,28 @@ def process_and_save(input_dir, output_dir, label):
 # メイン処理
 # ================================
 def main():
+    # TRAIN
     process_and_save(
-        input_dir="inputs/coch_zero",
-        output_dir="outputs/features_zero",
-        label="zero"
+        input_dir="inputs/train/coch_zero",
+        output_dir="outputs/train/features_zero",
+        label="zero",
+    )
+    process_and_save(
+        input_dir="inputs/train/coch_one",
+        output_dir="outputs/train/features_one",
+        label="one",
     )
 
+    # TEST
     process_and_save(
-        input_dir="inputs/coch_one",
-        output_dir="outputs/features_one",
-        label="one"
+        input_dir="inputs/test/coch_zero",
+        output_dir="outputs/test/features_zero",
+        label="zero",
+    )
+    process_and_save(
+        input_dir="inputs/test/coch_one",
+        output_dir="outputs/test/features_one",
+        label="one",
     )
 
 
