@@ -35,7 +35,8 @@ def load_dataset_split():
     if args.mode == "snn":
         # ZERO
         for path in tqdm(
-            glob.glob("audio_rc/reservoir_inputs/train/coch_zero/*.npy"), desc="TRAIN ZERO"
+            glob.glob("audio_rc/reservoir_inputs/train/coch_zero/*.npy"),
+            desc="TRAIN ZERO",
         ):
             coch = np.load(path)
             feat = GPU_SNN_simulation.main(
@@ -46,7 +47,8 @@ def load_dataset_split():
 
         # ONE
         for path in tqdm(
-            glob.glob("audio_rc/reservoir_inputs/train/coch_one/*.npy"), desc="TRAIN ONE"
+            glob.glob("audio_rc/reservoir_inputs/train/coch_one/*.npy"),
+            desc="TRAIN ONE",
         ):
             coch = np.load(path)
             feat = GPU_SNN_simulation.main(
@@ -57,14 +59,16 @@ def load_dataset_split():
     elif args.mode == "feature":
         # ZERO features
         for path in tqdm(
-            glob.glob("audio_rc/reservoir_outputs/train/features_zero/*.npy"), desc="TRAIN ZERO"
+            glob.glob("audio_rc/reservoir_outputs/train/features_zero/*.npy"),
+            desc="TRAIN ZERO",
         ):
             feat = np.load(path)
             X_train.append(feat)
             y_train.append(0)
         # ONE features
         for path in tqdm(
-            glob.glob("audio_rc/reservoir_outputs/train/features_one/*.npy"), desc="TRAIN ONE"
+            glob.glob("audio_rc/reservoir_outputs/train/features_one/*.npy"),
+            desc="TRAIN ONE",
         ):
             feat = np.load(path)
             X_train.append(feat)
@@ -74,7 +78,8 @@ def load_dataset_split():
     if args.mode == "snn":
         # ZERO
         for path in tqdm(
-            glob.glob("audio_rc/reservoir_inputs/test/coch_zero/*.npy"), desc="TEST ZERO"
+            glob.glob("audio_rc/reservoir_inputs/test/coch_zero/*.npy"),
+            desc="TEST ZERO",
         ):
             coch = np.load(path)
             feat = GPU_SNN_simulation.main(
@@ -96,14 +101,16 @@ def load_dataset_split():
     elif args.mode == "feature":
         # ZERO features
         for path in tqdm(
-            glob.glob("audio_rc/reservoir_outputs/test/features_zero/*.npy"), desc="TEST ZERO"
+            glob.glob("audio_rc/reservoir_outputs/test/features_zero/*.npy"),
+            desc="TEST ZERO",
         ):
             feat = np.load(path)
             X_test.append(feat)
             y_test.append(0)
         # ONE features
         for path in tqdm(
-            glob.glob("audio_rc/reservoir_outputs/test/features_one/*.npy"), desc="TEST ONE"
+            glob.glob("audio_rc/reservoir_outputs/test/features_one/*.npy"),
+            desc="TEST ONE",
         ):
             feat = np.load(path)
             X_test.append(feat)
