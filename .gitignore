@@ -110,7 +110,3 @@ sim_results/*
 graphs/*
 
 .vscode/*
-
-inputs/*
-
-outputs/*

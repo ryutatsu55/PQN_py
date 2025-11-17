@@ -2,10 +2,17 @@ import numpy as np
 import glob
 import os
 from tqdm import tqdm
-import GPU_SNN_simulation  # あなたの SNN main()
 
-os.makedirs("outputs/train", exist_ok=True)
-os.makedirs("outputs/test", exist_ok=True)
+import sys
+from pathlib import Path
+
+sys.path.append(
+    str(Path(__file__).resolve().parents[1])
+)  # HACK: 親ディレクトリをパスに追加
+import GPU_SNN_simulation
+
+os.makedirs("reservoir_outputs/train", exist_ok=True)
+os.makedirs("reservoir_outputs/test", exist_ok=True)
 
 
 # ================================
@@ -43,25 +50,25 @@ def process_and_save(input_dir, output_dir, label):
 def main():
     # TRAIN
     process_and_save(
-        input_dir="inputs/train/coch_zero",
-        output_dir="outputs/train/features_zero",
+        input_dir="audio_rc/reservoir_inputs/train/coch_zero",
+        output_dir="audio_rc/reservoir_outputs/train/features_zero",
         label="zero",
     )
     process_and_save(
-        input_dir="inputs/train/coch_one",
-        output_dir="outputs/train/features_one",
+        input_dir="audio_rc/reservoir_inputs/train/coch_one",
+        output_dir="audio_rc/reservoir_outputs/train/features_one",
         label="one",
     )
 
     # TEST
     process_and_save(
-        input_dir="inputs/test/coch_zero",
-        output_dir="outputs/test/features_zero",
+        input_dir="audio_rc/reservoir_inputs/test/coch_zero",
+        output_dir="audio_rc/reservoir_outputs/test/features_zero",
         label="zero",
     )
     process_and_save(
-        input_dir="inputs/test/coch_one",
-        output_dir="outputs/test/features_one",
+        input_dir="audio_rc/reservoir_inputs/test/coch_one",
+        output_dir="audio_rc/reservoir_outputs/test/features_one",
         label="one",
     )
 

@@ -4,8 +4,15 @@ import argparse
 from datetime import datetime
 
 from tqdm import tqdm
-from GPU_SNN_simulation import main  # あなたのSNN
 import matplotlib.pyplot as plt
+
+import sys
+from pathlib import Path
+
+sys.path.append(
+    str(Path(__file__).resolve().parents[1])
+)  # HACK: 親ディレクトリをパスに追加
+import GPU_SNN_simulation
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -27,18 +34,22 @@ def load_dataset_split():
     # ----- TRAIN -----
     if args.mode == "snn":
         # ZERO
-        for path in tqdm(glob.glob("inputs/train/coch_zero/*.npy"), desc="TRAIN ZERO"):
+        for path in tqdm(
+            glob.glob("audio_rc/reservoir_inputs/train/coch_zero/*.npy"), desc="TRAIN ZERO"
+        ):
             coch = np.load(path)
-            feat = main(
+            feat = GPU_SNN_simulation.main(
                 input_data=coch, label="zero", return_feature=True, isDebugPrint=False
             )
             X_train.append(feat)
             y_train.append(0)
 
         # ONE
-        for path in tqdm(glob.glob("inputs/train/coch_one/*.npy"), desc="TRAIN ONE"):
+        for path in tqdm(
+            glob.glob("audio_rc/reservoir_inputs/train/coch_one/*.npy"), desc="TRAIN ONE"
+        ):
             coch = np.load(path)
-            feat = main(
+            feat = GPU_SNN_simulation.main(
                 input_data=coch, label="one", return_feature=True, isDebugPrint=False
             )
             X_train.append(feat)
@@ -46,14 +57,14 @@ def load_dataset_split():
     elif args.mode == "feature":
         # ZERO features
         for path in tqdm(
-            glob.glob("outputs/train/features_zero/*.npy"), desc="TRAIN ZERO"
+            glob.glob("audio_rc/reservoir_outputs/train/features_zero/*.npy"), desc="TRAIN ZERO"
         ):
             feat = np.load(path)
             X_train.append(feat)
             y_train.append(0)
         # ONE features
         for path in tqdm(
-            glob.glob("outputs/train/features_one/*.npy"), desc="TRAIN ONE"
+            glob.glob("audio_rc/reservoir_outputs/train/features_one/*.npy"), desc="TRAIN ONE"
         ):
             feat = np.load(path)
             X_train.append(feat)
@@ -62,18 +73,22 @@ def load_dataset_split():
     # ----- TEST -----
     if args.mode == "snn":
         # ZERO
-        for path in tqdm(glob.glob("inputs/test/coch_zero/*.npy"), desc="TEST ZERO"):
+        for path in tqdm(
+            glob.glob("audio_rc/reservoir_inputs/test/coch_zero/*.npy"), desc="TEST ZERO"
+        ):
             coch = np.load(path)
-            feat = main(
+            feat = GPU_SNN_simulation.main(
                 input_data=coch, label="zero", return_feature=True, isDebugPrint=False
             )
             X_test.append(feat)
             y_test.append(0)
 
         # ONE
-        for path in tqdm(glob.glob("inputs/test/coch_one/*.npy"), desc="TEST ONE"):
+        for path in tqdm(
+            glob.glob("audio_rc/reservoir_inputs/test/coch_one/*.npy"), desc="TEST ONE"
+        ):
             coch = np.load(path)
-            feat = main(
+            feat = GPU_SNN_simulation.main(
                 input_data=coch, label="one", return_feature=True, isDebugPrint=False
             )
             X_test.append(feat)
@@ -81,13 +96,15 @@ def load_dataset_split():
     elif args.mode == "feature":
         # ZERO features
         for path in tqdm(
-            glob.glob("outputs/test/features_zero/*.npy"), desc="TEST ZERO"
+            glob.glob("audio_rc/reservoir_outputs/test/features_zero/*.npy"), desc="TEST ZERO"
         ):
             feat = np.load(path)
             X_test.append(feat)
             y_test.append(0)
         # ONE features
-        for path in tqdm(glob.glob("outputs/test/features_one/*.npy"), desc="TEST ONE"):
+        for path in tqdm(
+            glob.glob("audio_rc/reservoir_outputs/test/features_one/*.npy"), desc="TEST ONE"
+        ):
             feat = np.load(path)
             X_test.append(feat)
             y_test.append(1)
@@ -207,7 +224,7 @@ def main_train():
 
     timestamp = datetime.now().strftime("%Y%m%d%H%M")
     filename = f"confusion_matrix_{timestamp}.png"
-    plt.savefig(f"graphs/confusion_matrix/{filename}")
+    plt.savefig(f"audio_rc/figs/confusion_matrix/{filename}")
     plt.close()
     print(f"Saved {filename}")
 
@@ -215,7 +232,7 @@ def main_train():
     print(f"Test Accuracy:  {acc_test * 100:.2f}%")
 
     # 保存
-    np.save("outputs/W_out.npy", W_out)
+    np.save("audio_rc/reservoir_outputs/W_out.npy", W_out)
     print("Saved W_out.npy")
 
 
