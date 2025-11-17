@@ -159,6 +159,11 @@ def main_train():
     acc_train = evaluate(W_out, X_train, y_train)
     acc_test = evaluate(W_out, X_test, y_test)
 
+    y_train_shuffled = np.random.permutation(y_train)
+    W_out_shuffled = train_readout(X_train, y_train_shuffled)
+    acc_test_shuffled = evaluate(W_out_shuffled, X_test, y_test)
+    print(f"label shuffled test accuracy: {acc_test_shuffled}")
+
     # --- Confusion Matrix (2x2) ---
     num_classes = 2
     conf = np.zeros((num_classes, num_classes), dtype=int)
