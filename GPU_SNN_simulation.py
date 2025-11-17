@@ -33,7 +33,7 @@ if record:
 with open("my_kernel.cu", "r", encoding="utf-8") as f:
     my_kernel_code = f.read()
 
-# CuPyのRawKernelとしてカーネルをコンパイル（この行は変更なし）
+# CuPyのRawKernelとしてカーネルをコンパイル
 module = SourceModule(my_kernel_code)
 update_neuron_state = module.get_function("update_neuron_state")
 copy_arrival_spike = module.get_function("copy_arrival_spike")
@@ -197,7 +197,6 @@ def main(
 
     # 6. シミュレーションループ
     start = time.perf_counter()
-    # tqdm を return_feature=True のとき無効化
     loop_iter = tqdm(range(num_steps)) if isDebugPrint else range(num_steps)
 
     for i in loop_iter:
@@ -299,7 +298,7 @@ def main(
     # plt.show()
 
     if return_feature:
-        plt.close("all")
+        plt.close("all") # プロットウィンドウを閉じる これがないとエラーが出る場合がある
 
         firing_rate = rasters.mean(axis=0).astype(np.float32)  # shape = (100,)
         return firing_rate
