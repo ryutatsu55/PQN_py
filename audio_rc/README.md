@@ -6,11 +6,22 @@ PQNモデルによって実装したリザバーコンピューティングに�
 
 audioファイルにti46/ti20にあるtrainとtestをフォルダごと配置する必要がある
 
-## 実験手順
+## シミュレーション手順
 
-    cd PQN_py/audio_rc
-    python make_cochleagram.py
-    <!-- 上記操作はコクリアグラムを作成したいときのみ -->
-    cd PQN_py
-    python audio_rc/save_feature.py
-    python audio_rc/train_snn_readout.py
+下記はリザバー層の出力と線形学習器による計算を別々に行う方法
+```bash
+cd PQN_py/audio_rc
+python make_cochleagram.py
+cd PQN_py
+python audio_rc/save_feature.py
+python audio_rc/train_snn_readout.py
+```
+
+
+下記はリザバー層の出力を保存せず、一度に行う方法
+```bash
+cd PQN_py/audio_rc
+python make_cochleagram.py
+cd PQN_py
+python audio_rc/train_snn_readout.py --mode snn
+```
