@@ -116,6 +116,17 @@ def load_dataset_split():
             X_test.append(feat)
             y_test.append(1)
 
+    # shuffle
+    perm_train = np.random.permutation(len(X_train))
+
+    X_train = [X_train[i] for i in perm_train]
+    y_train = [y_train[i] for i in perm_train]
+
+    perm_test = np.random.permutation(len(X_test))
+
+    X_test = [X_test[i] for i in perm_test]
+    y_test = [y_test[i] for i in perm_test]
+
     return (
         np.stack(X_train, axis=0),
         np.array(y_train),
