@@ -50,6 +50,7 @@ def main(
     label: str = "unknown",
     return_feature: bool = False,
     isDebugPrint: bool = True,
+    N: int = 100,
 ):
     """
     SNNシミュレーションのメイン関数
@@ -59,7 +60,6 @@ def main(
             cochleagram or other time-series input.
     """
     # --- 初期設定 ---
-    N = 100
     tmax = 10  # [s]
     dt = 1e-4
     # --- 外部入力がある場合はシミュレーション長とtmaxを調整 ---
@@ -298,7 +298,9 @@ def main(
     # plt.show()
 
     if return_feature:
-        plt.close("all") # プロットウィンドウを閉じる これがないとエラーが出る場合がある
+        plt.close(
+            "all"
+        )  # プロットウィンドウを閉じる これがないとエラーが出る場合がある
 
         firing_rate = rasters.mean(axis=0).astype(np.float32)  # shape = (100,)
         return firing_rate

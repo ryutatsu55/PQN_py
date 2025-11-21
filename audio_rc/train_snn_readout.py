@@ -27,7 +27,7 @@ args = parser.parse_args()
 # ================================
 # 1. データ読み込み関数
 # ================================
-def load_dataset_split():
+def load_dataset_split(num_of_cells: int):
     X_train, y_train = [], []
     X_test, y_test = [], []
 
@@ -40,7 +40,11 @@ def load_dataset_split():
         ):
             coch = np.load(path)
             feat = GPU_SNN_simulation.main(
-                input_data=coch, label="zero", return_feature=True, isDebugPrint=False
+                input_data=coch,
+                label="zero",
+                return_feature=True,
+                isDebugPrint=False,
+                N=num_of_cells,
             )
             X_train.append(feat)
             y_train.append(0)
@@ -52,7 +56,11 @@ def load_dataset_split():
         ):
             coch = np.load(path)
             feat = GPU_SNN_simulation.main(
-                input_data=coch, label="one", return_feature=True, isDebugPrint=False
+                input_data=coch,
+                label="one",
+                return_feature=True,
+                isDebugPrint=False,
+                N=num_of_cells,
             )
             X_train.append(feat)
             y_train.append(1)
@@ -83,7 +91,11 @@ def load_dataset_split():
         ):
             coch = np.load(path)
             feat = GPU_SNN_simulation.main(
-                input_data=coch, label="zero", return_feature=True, isDebugPrint=False
+                input_data=coch,
+                label="zero",
+                return_feature=True,
+                isDebugPrint=False,
+                N=num_of_cells,
             )
             X_test.append(feat)
             y_test.append(0)
@@ -94,7 +106,11 @@ def load_dataset_split():
         ):
             coch = np.load(path)
             feat = GPU_SNN_simulation.main(
-                input_data=coch, label="one", return_feature=True, isDebugPrint=False
+                input_data=coch,
+                label="one",
+                return_feature=True,
+                isDebugPrint=False,
+                N=num_of_cells,
             )
             X_test.append(feat)
             y_test.append(1)
@@ -180,10 +196,10 @@ def evaluate(W_out, X, y):
 # ================================
 # 5. メイン処理
 # ================================
-def main_train():
+def main_train(num_of_cells: int):
     print(f"Mode: {args.mode}")
     print("Loading dataset...")
-    X_train, y_train, X_test, y_test = load_dataset_split()
+    X_train, y_train, X_test, y_test = load_dataset_split(num_of_cells)
     print("Train shape:", X_train.shape)
     print("Test  shape:", X_test.shape)
 
@@ -215,7 +231,7 @@ def main_train():
 
     plt.figure(figsize=(4, 4))
     plt.imshow(conf, cmap="Blues")
-    plt.title("Confusion Matrix")
+    plt.title(f"Confusion Matrix, N = {num_of_cells}")
     plt.xlabel("Predicted")
     plt.ylabel("True")
 
@@ -255,4 +271,5 @@ def main_train():
 
 
 if __name__ == "__main__":
-    main_train()
+    num_of_cells = 100
+    main_train(num_of_cells)
