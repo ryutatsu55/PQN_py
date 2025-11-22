@@ -18,7 +18,9 @@ os.makedirs("reservoir_outputs/test", exist_ok=True)
 # ================================
 # SNN の出力特徴を保存する関数
 # ================================
-def process_and_save(input_dir, output_dir, label, num_of_cells):
+def process_and_save(
+    input_dir: str, output_dir: str, label: str, num_of_cells: int
+) -> None:
     os.makedirs(output_dir, exist_ok=True)
 
     paths = sorted(glob.glob(os.path.join(input_dir, "*.npy")))
@@ -51,7 +53,7 @@ def process_and_save(input_dir, output_dir, label, num_of_cells):
 # ================================
 # メイン処理
 # ================================
-def main():
+def main() -> None:
     num_of_cells = 100
     # TRAIN
     process_and_save(

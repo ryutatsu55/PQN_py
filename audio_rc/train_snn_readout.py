@@ -27,7 +27,9 @@ args = parser.parse_args()
 # ================================
 # 1. データ読み込み関数
 # ================================
-def load_dataset_split(num_of_cells: int):
+def load_dataset_split(
+    num_of_cells: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     X_train, y_train = [], []
     X_test, y_test = [], []
 
@@ -154,7 +156,7 @@ def load_dataset_split(num_of_cells: int):
 # ================================
 # 2. 線形 readout の学習 (ridge regression)
 # ================================
-def train_readout(X, y, lambda_reg=1e-2):
+def train_readout(X: np.ndarray, y: np.ndarray, lambda_reg: float = 1e-2) -> np.ndarray:
     num_samples, N = X.shape
     classes = np.unique(y)
     C = len(classes)
@@ -176,7 +178,7 @@ def train_readout(X, y, lambda_reg=1e-2):
 # ================================
 # 3. 推論
 # ================================
-def predict(W_out, feat):
+def predict(W_out: np.ndarray, feat: np.ndarray) -> np.intp:
     logits = feat @ W_out  # shape = (C,)
     return np.argmax(logits)
 
@@ -184,7 +186,7 @@ def predict(W_out, feat):
 # ================================
 # 4. テストの精度測定
 # ================================
-def evaluate(W_out, X, y):
+def evaluate(W_out: np.ndarray, X: np.ndarray, y: np.ndarray) -> float:
     correct = 0
     for feat, label in zip(X, y):
         pred = predict(W_out, feat)
@@ -196,7 +198,7 @@ def evaluate(W_out, X, y):
 # ================================
 # 5. メイン処理
 # ================================
-def main_train(num_of_cells: int):
+def main_train(num_of_cells: int) -> None:
     print(f"Mode: {args.mode}")
     print("Loading dataset...")
     X_train, y_train, X_test, y_test = load_dataset_split(num_of_cells)
