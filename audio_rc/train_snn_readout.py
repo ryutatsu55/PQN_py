@@ -36,9 +36,10 @@ args = parser.parse_args()
 # ================================
 def load_dataset_split(
     num_of_cells: int,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[str]]:
     X_train, y_train = [], []
     X_test, y_test = [], []
+    X_test_paths = []
 
     # ----- TRAIN -----
     if args.mode == "snn":
@@ -108,6 +109,7 @@ def load_dataset_split(
             )
             X_test.append(feat)
             y_test.append(0)
+            X_test_paths.append(path)
 
         # ONE
         for path in tqdm(
@@ -123,6 +125,7 @@ def load_dataset_split(
             )
             X_test.append(feat)
             y_test.append(1)
+            X_test_paths.append(path)
     elif args.mode == "feature":
         # ZERO features
         for path in tqdm(
@@ -157,6 +160,7 @@ def load_dataset_split(
         np.array(y_train),
         np.stack(X_test, axis=0),
         np.array(y_test),
+        X_test_paths,
     )
 
 
@@ -208,7 +212,7 @@ def evaluate(W_out: np.ndarray, X: np.ndarray, y: np.ndarray) -> float:
 def main_train(num_of_cells: int) -> None:
     print(f"Mode: {args.mode}")
     print("Loading dataset...")
-    X_train, y_train, X_test, y_test = load_dataset_split(num_of_cells)
+    X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(num_of_cells)
     print("Train shape:", X_train.shape)
     print("Test  shape:", X_test.shape)
 
@@ -226,10 +230,13 @@ def main_train(num_of_cells: int) -> None:
 
     # --- Confusion Matrix (2x2) ---
     num_classes = 2
+    misclassified = []
     conf = np.zeros((num_classes, num_classes), dtype=int)
-    for feat, true_label in zip(X_test, y_test):
+    for feat, true_label, path in zip(X_test, y_test, X_test_paths):
         pred_label = predict(W_out, feat)
         conf[true_label, pred_label] += 1
+        if true_label != pred_label:
+            misclassified.append((path, true_label, pred_label))
 
     print("\nConfusion Matrix (rows=True, cols=Pred):")
     print(conf)
@@ -277,6 +284,13 @@ def main_train(num_of_cells: int) -> None:
     # 保存
     np.save("audio_rc/reservoir_outputs/W_out.npy", W_out)
     print("Saved W_out.npy")
+
+    print("\nMisclassified files:")
+    if len(misclassified) == 0:
+        print("  None! Perfect classification.")
+    else:
+        for path, true_label, pred_label in misclassified:
+            print(f"  {path}  true={true_label}, pred={pred_label}")
 
 
 if __name__ == "__main__":
