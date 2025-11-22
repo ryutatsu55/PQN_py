@@ -1,3 +1,4 @@
+import argparse
 import numpy as np
 import glob
 import os
@@ -13,6 +14,16 @@ import GPU_SNN_simulation
 
 os.makedirs("reservoir_outputs/train", exist_ok=True)
 os.makedirs("reservoir_outputs/test", exist_ok=True)
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--cells",
+    "-c",
+    type=int,
+    default=100,
+    help="number of reservoir cells (default: 100)",
+)
+args = parser.parse_args()
 
 
 # ================================
@@ -53,8 +64,7 @@ def process_and_save(
 # ================================
 # メイン処理
 # ================================
-def main() -> None:
-    num_of_cells = 100
+def main(num_of_cells: int) -> None:
     # TRAIN
     process_and_save(
         input_dir="audio_rc/reservoir_inputs/train/coch_zero",
@@ -85,4 +95,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    num_of_cells = args.cells
+    main(num_of_cells)

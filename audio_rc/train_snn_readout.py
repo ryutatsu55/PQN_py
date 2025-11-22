@@ -21,6 +21,13 @@ parser.add_argument(
     default="feature",
     help="snn: run SNN to compute features, feature: load saved feature .npy",
 )
+parser.add_argument(
+    "--cells",
+    "-c",
+    type=int,
+    default=100,
+    help="number of reservoir cells (default: 100)",
+)
 args = parser.parse_args()
 
 
@@ -273,5 +280,5 @@ def main_train(num_of_cells: int) -> None:
 
 
 if __name__ == "__main__":
-    num_of_cells = 100
+    num_of_cells = args.cells
     main_train(num_of_cells)
