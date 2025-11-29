@@ -135,6 +135,7 @@ def load_dataset_split(
             feat = np.load(path)
             X_test.append(feat)
             y_test.append(0)
+            X_test_paths.append(path)
         # ONE features
         for path in tqdm(
             glob.glob("audio_rc/reservoir_outputs/test/features_one/*.npy"),
@@ -143,6 +144,7 @@ def load_dataset_split(
             feat = np.load(path)
             X_test.append(feat)
             y_test.append(1)
+            X_test_paths.append(path)
 
     # shuffle
     perm_train = np.random.permutation(len(X_train))
@@ -289,8 +291,9 @@ def main_train(num_of_cells: int) -> None:
     if len(misclassified) == 0:
         print("  None! Perfect classification.")
     else:
-        for path, true_label, pred_label in misclassified:
-            print(f"  {path}  true={true_label}, pred={pred_label}")
+        print(len(misclassified), "files misclassified.")
+        # for path, true_label, pred_label in misclassified:
+        #     print(f"  {path}  true={true_label}, pred={pred_label}")
 
 
 if __name__ == "__main__":

@@ -20,6 +20,7 @@ __global__ void update_neuron_state(
     const unsigned char* neuron_type,
     // const int* RSexci_param,
     // const int* RSinhi_param,
+    float* I_input,
     float* synaptic_input,
     unsigned char* last_spike, 
     unsigned char* raster,
@@ -45,7 +46,7 @@ __global__ void update_neuron_state(
             return;
         }
 
-        int64_t I = (int64_t)((synaptic_input[tid])*(1<<param[1]));
+        int64_t I = (int64_t)((synaptic_input[tid]+I_input[tid])*(1<<param[1]));
         int64_t vv = (int64_t)((v * v) / (1LL << param[1]));
         
         v += v0(v, n, q, I, vv, param);

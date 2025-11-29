@@ -14,14 +14,14 @@ import os
 from src.PQN import PQNparam
 
 
-# SEED = int(random.random() * 1000)
-SEED = 678
+SEED = int(random.random() * 1000)
+# SEED = 678
 random.seed(SEED)  # for reproducibility
 np.random.seed(SEED)
 
-record = True
-record = False
-if record:
+# REC = True
+REC = False
+if REC:
     DATE = time.strftime("%Y%m%d")
     TIMESTAMP = time.strftime("%H%M")
     OUTDIR = f"sim_results/{DATE}/{TIMESTAMP}_SEED{SEED}"
@@ -50,7 +50,10 @@ def main(
     label: str = "unknown",
     return_feature: bool = False,
     isDebugPrint: bool = True,
-    N: int = 100,
+    Nin: int = 100,
+    density: float = 0.1,
+    N: int = 500,
+    record: bool = False,
 ):
     """
     SNNシミュレーションのメイン関数
@@ -62,19 +65,42 @@ def main(
     # --- 初期設定 ---
     tmax = 10  # [s]
     dt = 1e-4
+    S_durt = 8e-3 #8[ms]
     # --- 外部入力がある場合はシミュレーション長とtmaxを調整 ---
     if input_data is not None:
-        num_steps = input_data.shape[0]
-        tmax = num_steps * dt
+        tmax = input_data.shape[0] * S_durt  # assuming input_data was downsampled to 125Hz
+        num_steps = int(tmax / dt)
     else:
         num_steps = int(tmax / dt)
+
+    # if input_data is not None:
+    #     num_steps = input_data.shape[0]
+    #     tmax = num_steps * dt
+    # else:
+    #     num_steps = int(tmax / dt)
+
     # CPU-side linear projection of input_data (M -> N)
+
+    # projected_input = None
+    # if input_data is not None:
+    #     M = input_data.shape[1]
+    #     W_in = np.random.uniform(0.0, 1.0, size=(M, N)).astype(np.float32)
+    #     # active_indices = rng.choice(N, size=Nin, replace=False)
+    #     # mask = np.zeros(N, dtype=np.float32)
+    #     # mask[active_indices] = 1.0
+    #     # W_in = W_in * mask
+    #     scale = 0.2
+    #     ch_mask = np.random.choice([0, 1], size=(M, N),p=[1-density, density]).astype(np.float32)
+    #     W_in = W_in * ch_mask * scale
+    #     projected_input = input_data @ W_in
+
     projected_input = None
     if input_data is not None:
         M = input_data.shape[1]
         rng = np.random.default_rng(42)
         W_in = rng.normal(0, 1, size=(M, N)).astype(np.float32)
         projected_input = input_data @ W_in
+
     v = np.zeros((num_steps, N))
     rasters = np.zeros((num_steps, N), dtype=np.uint8)
     input = np.zeros((num_steps, N), dtype=np.float32)
@@ -107,8 +133,9 @@ def main(
     # resovoir_origin, mask = create_random_matrix(N)
     resovoir_weight = np.copy(resovoir_origin)
     resovoir_weight = resovoir_weight * k
-    visualize_matrix(resovoir_origin, plot_num)
-    plot_num += 1
+    if record:
+        visualize_matrix(resovoir_origin, plot_num)
+        plot_num += 1
 
     for i in range(N):
         if type[0, i] == 1:
@@ -184,6 +211,7 @@ def main(
     arrival_spike_d = gpuarray.zeros(N_S, dtype=np.uint8)
     spike_in_d = gpuarray.to_gpu(spike_in_h)
     synapses_out_d = gpuarray.zeros(N, dtype=np.float32)
+    I_input_d = gpuarray.zeros(N, dtype=np.float32)
 
     # 5. カーネルの実行設定
     neuron_threads_per_block = 256
@@ -206,6 +234,7 @@ def main(
             Ns_d.gpudata,
             Qs_d.gpudata,
             neuron_type_d.gpudata,
+            I_input_d.gpudata,
             synapses_out_d.gpudata,
             last_spike_d.gpudata,
             raster_d.gpudata,
@@ -260,19 +289,33 @@ def main(
         event_update_input.record(stream2)
 
         stream3.wait_for_event(event_update_neuron)
-        cuda.memcpy_dtoh_async(Vs_h, Vs_d.gpudata, stream=stream3)
+        if record: cuda.memcpy_dtoh_async(Vs_h, Vs_d.gpudata, stream=stream3)
         cuda.memcpy_dtoh_async(rasters[i], raster_d.gpudata, stream=stream3)
 
-        if projected_input is not None and i < num_steps:
-            prob = 1 / (1 + np.exp(-projected_input[i]))  # sigmoid on projected input
-            spike_in_h = (np.random.rand(N) < prob).astype(np.uint8)
-        else:
-            spike_in_h = np.zeros(N, dtype=np.uint8)
+        if i%(S_durt/dt) == 0:
+            idx =  int(i/(S_durt/dt)-1)
+            prob = 1 / (1 + np.exp(-projected_input[idx]))  # sigmoid on projected input
+        spike_in_h = (np.random.rand(N) < prob).astype(np.uint8)
         cuda.memcpy_htod_async(spike_in_d.gpudata, spike_in_h, stream=stream3)
 
+        # if i%(S_durt/dt) == 0:
+        #     idx =  int(i/(S_durt/dt)-1)
+        #     I_input_h = projected_input[idx].astype(np.float32)
+        #     cuda.memcpy_htod_async(I_input_d.gpudata, I_input_h, stream=stream3)
+
+        
+        # if projected_input is not None and i < num_steps:
+        #     prob = 1 / (1 + np.exp(-projected_input[i]))  # sigmoid on projected input
+        #     spike_in_h = (np.random.rand(N) < prob).astype(np.uint8)
+        # else:
+        #     spike_in_h = np.zeros(N, dtype=np.uint8)
+        # cuda.memcpy_htod_async(spike_in_d.gpudata, spike_in_h, stream=stream3)
+
         stream3.synchronize()
-        v[i] = Vs_h
-        rasters[i] = rasters[i] | spike_in_h
+        if record:
+            v[i] = Vs_h
+            # input[i] = I_input_h
+        # rasters[i] = rasters[i] | spike_in_h
         # stream2.synchronize()
         # stream1.synchronize()
         # input[i] = x_d.get()
@@ -289,11 +332,12 @@ def main(
         print(f"SEED value was {SEED}")
     v = v / 2**RSexci.BIT_WIDTH_FRACTIONAL
     # ---- plot simulation result ----
-    plot_single_neuron(0, dt, tmax, num_steps, input, v, plot_num, label)
-    plot_num += 1
+    if record:
+        plot_single_neuron(0, dt, tmax, num_steps, input, v, plot_num, label)
+        plot_num += 1
 
-    plot_raster(dt, tmax, rasters, N, plot_num)
-    plot_num += 1
+        plot_raster(dt, tmax, rasters, N, plot_num)
+        plot_num += 1
 
     # plt.show()
 
@@ -301,7 +345,8 @@ def main(
         plt.close(
             "all"
         )  # プロットウィンドウを閉じる これがないとエラーが出る場合がある
-
+        # readout_indices = np.random.choice(N, size=100, replace=False)
+        # target_rasters = rasters[:, active_indices]
         firing_rate = rasters.mean(axis=0).astype(np.float32)  # shape = (100,)
         return firing_rate
 
@@ -494,7 +539,7 @@ def visualize_matrix(matrix, num):
     plt.tight_layout()
     save_path = os.path.join("graphs", "resovoir_weight_matrix.png")
     plt.savefig(save_path)
-    if record:
+    if REC:
         save_path = os.path.join(OUTDIR, "resovoir_weight_matrix.png")
         plt.savefig(save_path)
 
@@ -516,7 +561,7 @@ def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, num, label):
     ax1.set_xlabel("[s]")
     save_path = os.path.join("graphs", "single_neuron.png")
     plt.savefig(save_path)
-    if record:
+    if REC:
         save_path = os.path.join(OUTDIR, f"single_neuron_{label}.png")
         plt.savefig(save_path)
 
@@ -538,7 +583,7 @@ def plot_raster(dt, tmax, rasters, N, num):
     plt.tight_layout()
     save_path = os.path.join("graphs", "raster.png")
     plt.savefig(save_path)
-    if record:
+    if REC:
         save_path = os.path.join(OUTDIR, "raster.png")
         plt.savefig(save_path)
 
