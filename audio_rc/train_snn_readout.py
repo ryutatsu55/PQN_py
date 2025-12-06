@@ -41,6 +41,8 @@ def load_dataset_split(
     X_test, y_test = [], []
     X_test_paths = []
 
+    reservoir_state = GPU_SNN_simulation.init_reservoir(N=num_of_cells, seed=123)
+
     # ----- TRAIN -----
     if args.mode == "snn":
         # ZERO
@@ -51,6 +53,7 @@ def load_dataset_split(
             coch = np.load(path)
             feat = GPU_SNN_simulation.main(
                 input_data=coch,
+                reservoir_state=reservoir_state,
                 label="zero",
                 return_feature=True,
                 isDebugPrint=False,
@@ -67,6 +70,7 @@ def load_dataset_split(
             coch = np.load(path)
             feat = GPU_SNN_simulation.main(
                 input_data=coch,
+                reservoir_state=reservoir_state,
                 label="one",
                 return_feature=True,
                 isDebugPrint=False,
@@ -102,6 +106,7 @@ def load_dataset_split(
             coch = np.load(path)
             feat = GPU_SNN_simulation.main(
                 input_data=coch,
+                reservoir_state=reservoir_state,
                 label="zero",
                 return_feature=True,
                 isDebugPrint=False,
@@ -118,6 +123,7 @@ def load_dataset_split(
             coch = np.load(path)
             feat = GPU_SNN_simulation.main(
                 input_data=coch,
+                reservoir_state=reservoir_state,
                 label="one",
                 return_feature=True,
                 isDebugPrint=False,

@@ -47,6 +47,7 @@ mat_vec_mul = module.get_function("mat_vec_mul")
 # -------------------------------------------------------------
 def main(
     input_data: np.ndarray | None = None,
+    reservoir_state=None,
     label: str = "unknown",
     return_feature: bool = False,
     isDebugPrint: bool = True,
@@ -130,14 +131,22 @@ def main(
     RSinhi_param_h = param_h_init(RSinhi)
 
     # ---- 重み行列の作成 ----
-    k = 0.03
-    resovoir_origin, mask, type = create_moduled_matrix(N)
-    # resovoir_origin, mask = create_random_matrix(N)
-    resovoir_weight = np.copy(resovoir_origin)
-    resovoir_weight = resovoir_weight * k
-    if record:
-        visualize_matrix(resovoir_origin, plot_num)
-        plot_num += 1
+    if reservoir_state is None:
+        raise ValueError("reservoir_state must be provided.")
+    resovoir_weight = reservoir_state["resovoir_weight"]
+    mask = reservoir_state["mask"]
+    type = reservoir_state["type"]
+    N_S = reservoir_state["N_S"]
+    tau_rec_h = reservoir_state["tau_rec_h"]
+    tau_inact_h = reservoir_state["tau_inact_h"]
+    tau_faci_h = reservoir_state["tau_faci_h"]
+    U1_h = reservoir_state["U1_h"]
+    U_h = reservoir_state["U_h"]
+    mask_faci_h = reservoir_state["mask_faci_h"]
+    neuron_from_h = reservoir_state["neuron_from_h"]
+    calc_matrix_h = reservoir_state["calc_matrix_h"]
+    neuron_to_h = reservoir_state["neuron_to_h"]
+    delayed_row_h = reservoir_state["delayed_row_h"]
 
     for i in range(N):
         if type[0, i] == 1:
@@ -151,15 +160,8 @@ def main(
             Qs_h[i] = RSinhi.state_variable_q
             neuron_type_h[i] = 1
 
-    N_S = np.count_nonzero(resovoir_weight)
-
     td_float32 = np.float32(1e-2)
     tr_float32 = np.float32(5e-3)
-    tau_rec_h, tau_inact_h, tau_faci_h, U1_h, U_h, mask_faci_h = synapses_init(
-        resovoir_weight, N, N_S
-    )
-    neuron_from_h, calc_matrix_h, neuron_to_h = calc_init(resovoir_weight, N, N_S)
-    delayed_row_h = delay_init(resovoir_weight, N, N_S, mask)
 
     # 4. デバイス側(GPU)にメモリを確保し、データを転送
     RSexci_param_d, RSexci_param_d_size = module.get_global("RSexci_param")
@@ -291,7 +293,8 @@ def main(
         event_update_input.record(stream2)
 
         stream3.wait_for_event(event_update_neuron)
-        if record: cuda.memcpy_dtoh_async(Vs_h, Vs_d.gpudata, stream=stream3)
+        if record:
+            cuda.memcpy_dtoh_async(Vs_h, Vs_d.gpudata, stream=stream3)
         cuda.memcpy_dtoh_async(rasters[i], raster_d.gpudata, stream=stream3)
 
         steps_per_frame = int(round(S_durt / dt))
@@ -308,7 +311,6 @@ def main(
         #     I_input_h = projected_input[idx].astype(np.float32)
         #     cuda.memcpy_htod_async(I_input_d.gpudata, I_input_h, stream=stream3)
 
-        
         # if projected_input is not None and i < num_steps:
         #     prob = 1 / (1 + np.exp(-projected_input[i]))  # sigmoid on projected input
         #     spike_in_h = (np.random.rand(N) < prob).astype(np.uint8)
@@ -532,6 +534,35 @@ def delay_init(resovoir_weight, N, N_S, mask):
     return delay_row
 
 
+def init_reservoir(N, seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    resovoir_origin, mask, type = create_moduled_matrix(N)
+    resovoir_weight = np.copy(resovoir_origin) * 0.03
+    N_S = np.count_nonzero(resovoir_weight)
+    tau_rec_h, tau_inact_h, tau_faci_h, U1_h, U_h, mask_faci_h = synapses_init(
+        resovoir_weight, N, N_S
+    )
+    neuron_from_h, calc_matrix_h, neuron_to_h = calc_init(resovoir_weight, N, N_S)
+    delayed_row_h = delay_init(resovoir_weight, N, N_S, mask)
+    return {
+        "resovoir_weight": resovoir_weight,
+        "mask": mask,
+        "type": type,
+        "N_S": N_S,
+        "tau_rec_h": tau_rec_h,
+        "tau_inact_h": tau_inact_h,
+        "tau_faci_h": tau_faci_h,
+        "U1_h": U1_h,
+        "U_h": U_h,
+        "mask_faci_h": mask_faci_h,
+        "neuron_from_h": neuron_from_h,
+        "calc_matrix_h": calc_matrix_h,
+        "neuron_to_h": neuron_to_h,
+        "delayed_row_h": delayed_row_h,
+    }
+
+
 def visualize_matrix(matrix, num):
     plt.figure(num=num, figsize=(8, 6))
     max_abs = np.max(np.abs(matrix))
@@ -600,5 +631,5 @@ if __name__ == "__main__":
     # profiler.print_stats()
 
     coch = np.load("coch_zero.npy")
-
-    main(input_data=coch, label="cochleagram")
+    reservoir = init_reservoir(N=500, seed=123)
+    main(input_data=coch, reservoir_state=reservoir, label="cochleagram")
