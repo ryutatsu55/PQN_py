@@ -65,10 +65,12 @@ def main(
     # --- 初期設定 ---
     tmax = 10  # [s]
     dt = 1e-4
-    S_durt = 8e-3 #8[ms]
+    S_durt = 8e-3  # 8[ms]
     # --- 外部入力がある場合はシミュレーション長とtmaxを調整 ---
     if input_data is not None:
-        tmax = input_data.shape[0] * S_durt  # assuming input_data was downsampled to 125Hz
+        tmax = (
+            input_data.shape[0] * S_durt
+        )  # assuming input_data was downsampled to 125Hz
         num_steps = int(tmax / dt)
     else:
         num_steps = int(tmax / dt)
@@ -292,9 +294,12 @@ def main(
         if record: cuda.memcpy_dtoh_async(Vs_h, Vs_d.gpudata, stream=stream3)
         cuda.memcpy_dtoh_async(rasters[i], raster_d.gpudata, stream=stream3)
 
-        if i%(S_durt/dt) == 0:
-            idx =  int(i/(S_durt/dt)-1)
-            prob = 1 / (1 + np.exp(-projected_input[idx]))  # sigmoid on projected input
+        steps_per_frame = int(round(S_durt / dt))
+        if i % steps_per_frame == 0:
+            idx = i // steps_per_frame
+            if idx >= projected_input.shape[0]:
+                idx = projected_input.shape[0] - 1
+            prob = 1 / (1 + np.exp(-projected_input[idx]))
         spike_in_h = (np.random.rand(N) < prob).astype(np.uint8)
         cuda.memcpy_htod_async(spike_in_d.gpudata, spike_in_h, stream=stream3)
 
