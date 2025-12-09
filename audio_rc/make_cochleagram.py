@@ -18,7 +18,7 @@ def compute_cochleagram(audio_path: str, decimation_factor: int = 64) -> np.ndar
         y,
         int(sr),
         decimation_factor=decimation_factor,
-        step_factor=0.195 * 4,  # 24ch
+        step_factor=0.195 * 6,  # 16ch
     )
 
     print(f"original sampling duration : {1000/sr} [ms]")
@@ -256,7 +256,7 @@ if __name__ == "__main__":
                 train_root=audio_root + folder,
                 out_dir=f"reservoir_inputs/{folder}/coch_{name}",  # 出力先フォルダ
                 word_codes=[code],  # 指定した単語コードのみ
-                decimation_factor=100,   # サンプリング時間の間引き
+                decimation_factor=100,  # サンプリング時間の間引き
                 delete_wav=True,  # .wav は一時ファイルとして削除
                 n_jobs=None,  # CPU数 - 1 を自動で使用
                 build_big_tensor=True,
