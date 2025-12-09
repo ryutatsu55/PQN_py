@@ -56,7 +56,7 @@ def load_dataset_split(
                 reservoir_state=reservoir_state,
                 label="zero",
                 return_feature=True,
-                isDebugPrint=False,
+                is_debug_print=False,
                 N=num_of_cells,
             )
             X_train.append(feat)
@@ -73,7 +73,7 @@ def load_dataset_split(
                 reservoir_state=reservoir_state,
                 label="one",
                 return_feature=True,
-                isDebugPrint=False,
+                is_debug_print=False,
                 N=num_of_cells,
             )
             X_train.append(feat)
@@ -109,7 +109,7 @@ def load_dataset_split(
                 reservoir_state=reservoir_state,
                 label="zero",
                 return_feature=True,
-                isDebugPrint=False,
+                is_debug_print=False,
                 N=num_of_cells,
             )
             X_test.append(feat)
@@ -126,7 +126,7 @@ def load_dataset_split(
                 reservoir_state=reservoir_state,
                 label="one",
                 return_feature=True,
-                isDebugPrint=False,
+                is_debug_print=False,
                 N=num_of_cells,
             )
             X_test.append(feat)
