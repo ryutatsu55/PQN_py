@@ -50,7 +50,7 @@ def main(
     reservoir_state=None,
     label: str = "unknown",
     return_feature: bool = False,
-    isDebugPrint: bool = True,
+    is_debug_print: bool = True,
     Nin: int = 100,
     density: float = 0.1,
     N: int = 500,
@@ -229,7 +229,7 @@ def main(
 
     # 6. シミュレーションループ
     start = time.perf_counter()
-    loop_iter = tqdm(range(num_steps)) if isDebugPrint else range(num_steps)
+    loop_iter = tqdm(range(num_steps)) if is_debug_print else range(num_steps)
 
     for i in loop_iter:
         read_idx = np.int32(i % buffer_size)
@@ -332,7 +332,7 @@ def main(
 
     end = time.perf_counter()
 
-    if isDebugPrint:
+    if is_debug_print:
         print(
             f"processing time for {tmax}s simulation mas {(end - start)} s when reservoir_size was {N}"
         )
