@@ -41,7 +41,17 @@ def load_dataset_split(
     X_test, y_test = [], []
     X_test_paths = []
 
-    reservoir_state = GPU_SNN_simulation.init_reservoir(N=num_of_cells, seed=123)
+    # determine input dimension M (number of cochleagram channels)
+    sample_paths = glob.glob("audio_rc/reservoir_inputs/train/coch_zero/*.npy")
+    if len(sample_paths) == 0:
+        sample_paths = glob.glob("audio_rc/reservoir_inputs/train/coch_one/*.npy")
+    if len(sample_paths) == 0:
+        raise RuntimeError("No cochleagram .npy files found in train directories.")
+    sample_coch = np.load(sample_paths[0])
+    input_size = sample_coch.shape[1]
+    reservoir_state = GPU_SNN_simulation.init_reservoir(
+        N=num_of_cells, seed=123, input_size=input_size
+    )
 
     # ----- TRAIN -----
     if args.mode == "snn":
@@ -223,6 +233,16 @@ def main_train(num_of_cells: int) -> None:
     X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(num_of_cells)
     print("Train shape:", X_train.shape)
     print("Test  shape:", X_test.shape)
+
+    # load_dataset_split の戻り値を受け取った直後あたりに追加
+    print("zero feat mean:", X_train[y_train == 0].mean(axis=0)[:10])
+    print("one  feat mean:", X_train[y_train == 1].mean(axis=0)[:10])
+    print(
+        "difference norm:",
+        np.linalg.norm(
+            X_train[y_train == 0].mean(axis=0) - X_train[y_train == 1].mean(axis=0)
+        ),
+    )
 
     print("Training readout...")
     W_out = train_readout(X_train, y_train, lambda_reg=1e-2)

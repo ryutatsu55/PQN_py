@@ -76,32 +76,28 @@ def main(
     else:
         num_steps = int(tmax / dt)
 
+    # --- layer definition: input, reservoir, output ---
+    # --- layer definition replaced: now using reservoir_state indices ---
+    if reservoir_state is None:
+        raise ValueError("reservoir_state must be provided.")
+    input_indices = reservoir_state["input_indices"]
+    output_indices = reservoir_state["output_indices"]
+    Nin_layer = len(input_indices)
+    Nout_layer = len(output_indices)
     # if input_data is not None:
     #     num_steps = input_data.shape[0]
     #     tmax = num_steps * dt
     # else:
     #     num_steps = int(tmax / dt)
 
-    # CPU-side linear projection of input_data (M -> N)
-
-    # projected_input = None
-    # if input_data is not None:
-    #     M = input_data.shape[1]
-    #     W_in = np.random.uniform(0.0, 1.0, size=(M, N)).astype(np.float32)
-    #     # active_indices = rng.choice(N, size=Nin, replace=False)
-    #     # mask = np.zeros(N, dtype=np.float32)
-    #     # mask[active_indices] = 1.0
-    #     # W_in = W_in * mask
-    #     scale = 0.2
-    #     ch_mask = np.random.choice([0, 1], size=(M, N),p=[1-density, density]).astype(np.float32)
-    #     W_in = W_in * ch_mask * scale
-    #     projected_input = input_data @ W_in
-
+    # CPU-side linear projection of input_data (M -> Nin_layer)
     projected_input = None
     if input_data is not None:
         M = input_data.shape[1]
+        # 入力チャンネル数分だけ入力層を用意し、そのニューロンにのみ外部入力を与える
         rng = np.random.default_rng(42)
-        W_in = rng.normal(0, 1, size=(M, N)).astype(np.float32)
+        W_in = rng.normal(0, 1, size=(M, M)).astype(np.float32)
+        # shape: (T, Nin_layer)  → 入力層ニューロンの「前処理された入力」
         projected_input = input_data @ W_in
 
     v = np.zeros((num_steps, N))
@@ -231,6 +227,9 @@ def main(
     start = time.perf_counter()
     loop_iter = tqdm(range(num_steps)) if is_debug_print else range(num_steps)
 
+    # 各ニューロンに対するスパイク生成確率（入力層のみ非ゼロ）
+    prob_all = np.zeros(N, dtype=np.float32)
+
     for i in loop_iter:
         read_idx = np.int32(i % buffer_size)
         update_neuron_state(  # stream1
@@ -298,12 +297,19 @@ def main(
         cuda.memcpy_dtoh_async(rasters[i], raster_d.gpudata, stream=stream3)
 
         steps_per_frame = int(round(S_durt / dt))
-        if i % steps_per_frame == 0:
-            idx = i // steps_per_frame
-            if idx >= projected_input.shape[0]:
-                idx = projected_input.shape[0] - 1
-            prob = 1 / (1 + np.exp(-projected_input[idx]))
-        spike_in_h = (np.random.rand(N) < prob).astype(np.uint8)
+        if projected_input is not None:
+            # S_durt ごとに入力フレームを1ステップ進める
+            if i % steps_per_frame == 0:
+                idx = i // steps_per_frame
+                if idx >= projected_input.shape[0]:
+                    idx = projected_input.shape[0] - 1
+                # 入力層ニューロン用の確率のみ更新
+                prob_input = 1 / (1 + np.exp(-projected_input[idx]))
+                prob_all[:] = 0.0
+                prob_all[input_indices] = prob_input
+
+        # 入力層ニューロンのみ確率的スパイクを発火させる
+        spike_in_h = (np.random.rand(N) < prob_all).astype(np.uint8)
         cuda.memcpy_htod_async(spike_in_d.gpudata, spike_in_h, stream=stream3)
 
         # if i%(S_durt/dt) == 0:
@@ -352,10 +358,22 @@ def main(
         plt.close(
             "all"
         )  # プロットウィンドウを閉じる これがないとエラーが出る場合がある
-        # readout_indices = np.random.choice(N, size=100, replace=False)
-        # target_rasters = rasters[:, active_indices]
-        firing_rate = rasters.mean(axis=0).astype(np.float32)  # shape = (100,)
-        return firing_rate
+
+        read_indices = reservoir_state["output_indices"]
+        ras = rasters[:, read_indices]  # shape = (T, M)
+
+        T = ras.shape[0]
+        S = 8  # number of segments
+        seg_list = []
+
+        for s in range(S):
+            t0 = s * T // S
+            t1 = (s + 1) * T // S
+            seg_mean = ras[t0:t1].mean(axis=0)  # shape = (M,)
+            seg_list.append(seg_mean)
+
+        feature = np.concatenate(seg_list, axis=0).astype(np.float32)  # shape = (8*M,)
+        return feature
 
 
 def param_h_init(PQN):
@@ -534,7 +552,7 @@ def delay_init(resovoir_weight, N, N_S, mask):
     return delay_row
 
 
-def init_reservoir(N, seed):
+def init_reservoir(N, seed, input_size):
     random.seed(seed)
     np.random.seed(seed)
     resovoir_origin, mask, type = create_moduled_matrix(N)
@@ -545,6 +563,12 @@ def init_reservoir(N, seed):
     )
     neuron_from_h, calc_matrix_h, neuron_to_h = calc_init(resovoir_weight, N, N_S)
     delayed_row_h = delay_init(resovoir_weight, N, N_S, mask)
+
+    rng = np.random.default_rng(seed)
+
+    input_indices = rng.choice(N, size=input_size, replace=False)
+    remaining = np.setdiff1d(np.arange(N), input_indices)
+    output_indices = rng.choice(remaining, size=input_size, replace=False)
     return {
         "resovoir_weight": resovoir_weight,
         "mask": mask,
@@ -560,6 +584,8 @@ def init_reservoir(N, seed):
         "calc_matrix_h": calc_matrix_h,
         "neuron_to_h": neuron_to_h,
         "delayed_row_h": delayed_row_h,
+        "input_indices": input_indices,
+        "output_indices": output_indices,
     }
 
 

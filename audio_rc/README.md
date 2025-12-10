@@ -25,3 +25,9 @@ python make_cochleagram.py
 cd PQN_py
 python audio_rc/train_snn_readout.py --mode snn
 ```
+
+## おまけ
+下記のコマンドを使えば、ターミナルが死んでも処理は続く
+```bash
+nohup python ./audio_rc/train_snn_readout.py --mode snn -c 48 > ./audio_rc/logs/run_background_try.log 2>&1 &
+```
