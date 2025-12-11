@@ -355,25 +355,10 @@ def main(
     # plt.show()
 
     if return_feature:
-        plt.close(
-            "all"
-        )  # プロットウィンドウを閉じる これがないとエラーが出る場合がある
-
+        plt.close("all")
         read_indices = reservoir_state["output_indices"]
-        ras = rasters[:, read_indices]  # shape = (T, M)
-
-        T = ras.shape[0]
-        S = 8  # number of segments
-        seg_list = []
-
-        for s in range(S):
-            t0 = s * T // S
-            t1 = (s + 1) * T // S
-            seg_mean = ras[t0:t1].mean(axis=0)  # shape = (M,)
-            seg_list.append(seg_mean)
-
-        feature = np.concatenate(seg_list, axis=0).astype(np.float32)  # shape = (8*M,)
-        return feature
+        x_t = rasters[:, read_indices].astype(np.float32)  # shape = (T, M)
+        return x_t
 
 
 def param_h_init(PQN):

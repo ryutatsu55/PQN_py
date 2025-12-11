@@ -173,10 +173,26 @@ def load_dataset_split(
     X_test = [X_test[i] for i in perm_test]
     y_test = [y_test[i] for i in perm_test]
 
+    # --- Pad sequences to T_max and flatten ---
+    def pad_and_flatten(x, T_max):
+        T, M = x.shape
+        if T < T_max:
+            pad = np.zeros((T_max - T, M), dtype=np.float32)
+            x = np.vstack([x, pad])
+        return x.reshape(-1).astype(np.float32)
+
+    if len(X_train) == 0:
+        raise RuntimeError("No training data loaded.")
+
+    T_max = max(x.shape[0] for x in X_train + X_test)
+
+    X_train_flat = np.stack([pad_and_flatten(x, T_max) for x in X_train])
+    X_test_flat = np.stack([pad_and_flatten(x, T_max) for x in X_test])
+
     return (
-        np.stack(X_train, axis=0),
+        X_train_flat,
         np.array(y_train),
-        np.stack(X_test, axis=0),
+        X_test_flat,
         np.array(y_test),
         X_test_paths,
     )
@@ -186,20 +202,20 @@ def load_dataset_split(
 # 2. 線形 readout の学習 (ridge regression)
 # ================================
 def train_readout(X: np.ndarray, y: np.ndarray, lambda_reg: float = 1e-2) -> np.ndarray:
-    num_samples, N = X.shape
+    num_samples, D = X.shape
     classes = np.unique(y)
     C = len(classes)
 
-    # one-hot 行列 Y (num_samples, C)
     Y = np.zeros((num_samples, C), dtype=np.float32)
     for i, label in enumerate(y):
         Y[i, label] = 1.0
 
-    I = np.eye(N, dtype=np.float32)
+    # K = X X^T : (num_samples, num_samples)
+    K = X @ X.T
+    I = np.eye(num_samples, dtype=np.float32)
 
-    # ridge regression closed form解
-    W_out = np.linalg.inv(X.T @ X + lambda_reg * I) @ (X.T @ Y)
-    # shape = (100, C)
+    alpha = np.linalg.inv(K + lambda_reg * I) @ Y  # (num_samples, C)
+    W_out = X.T @ alpha  # (D, C)
 
     return W_out
 
