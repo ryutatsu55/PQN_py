@@ -1,3 +1,4 @@
+import json
 import numpy as np
 import glob
 import argparse
@@ -28,6 +29,12 @@ parser.add_argument(
     default=100,
     help="number of reservoir cells (default: 100)",
 )
+parser.add_argument(
+    "--seed",
+    type=int,
+    default=123,
+    help="random seed (default: 123)",
+)
 args = parser.parse_args()
 
 
@@ -35,7 +42,7 @@ args = parser.parse_args()
 # 1. データ読み込み関数
 # ================================
 def load_dataset_split(
-    num_of_cells: int,
+    num_of_cells: int, seed: int
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[str]]:
     X_train, y_train = [], []
     X_test, y_test = [], []
@@ -50,7 +57,7 @@ def load_dataset_split(
     sample_coch = np.load(sample_paths[0])
     input_size = sample_coch.shape[1]
     reservoir_state = GPU_SNN_simulation.init_reservoir(
-        N=num_of_cells, seed=123, input_size=input_size
+        N=num_of_cells, seed=seed, input_size=input_size
     )
 
     # ----- TRAIN -----
@@ -243,10 +250,14 @@ def evaluate(W_out: np.ndarray, X: np.ndarray, y: np.ndarray) -> float:
 # ================================
 # 5. メイン処理
 # ================================
-def main_train(num_of_cells: int) -> None:
+def main_train(num_of_cells: int, seed: int) -> None:
     print(f"Mode: {args.mode}")
+    print(f"Number of reservoir cells: {num_of_cells}")
+    print(f"Random seed: {seed}")
     print("Loading dataset...")
-    X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(num_of_cells)
+    X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(
+        num_of_cells, seed
+    )
     print("Train shape:", X_train.shape)
     print("Test  shape:", X_test.shape)
 
@@ -337,7 +348,20 @@ def main_train(num_of_cells: int) -> None:
         # for path, true_label, pred_label in misclassified:
         #     print(f"  {path}  true={true_label}, pred={pred_label}")
 
+    Path("audio_rc/results").mkdir(exist_ok=True)
+
+    result = {
+        "seed": seed,
+        "num_cells": num_of_cells,
+        "acc_train": acc_train,
+        "acc_test": acc_test,
+    }
+
+    with open("audio_rc/results/results.jsonl", "a") as f:
+        f.write(json.dumps(result) + "\n")
+
 
 if __name__ == "__main__":
     num_of_cells = args.cells
-    main_train(num_of_cells)
+    seed = args.seed
+    main_train(num_of_cells, seed)
