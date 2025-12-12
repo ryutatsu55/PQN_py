@@ -7,7 +7,10 @@ results = []
 # JSONL 読み込み
 with open("audio_rc/results/results.jsonl") as f:
     for line in f:
-        results.append(json.loads(line))
+        record = json.loads(line)
+        if record.get("mode") == "linear":
+            continue
+        results.append(record)
 
 # ソートしておくときれい
 results = sorted(results, key=lambda x: x["seed"])

@@ -18,9 +18,9 @@ import GPU_SNN_simulation
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--mode",
-    choices=["snn", "feature"],
+    choices=["snn", "feature", "linear"],
     default="feature",
-    help="snn: run SNN to compute features, feature: load saved feature .npy",
+    help="snn: run SNN to compute features, feature: load saved feature .npy, linear: use cochleagram directly",
 )
 parser.add_argument(
     "--cells",
@@ -59,6 +59,9 @@ def load_dataset_split(
     reservoir_state = GPU_SNN_simulation.init_reservoir(
         N=num_of_cells, seed=seed, input_size=input_size
     )
+    # If linear mode, we do not initialize or use the reservoir
+    if args.mode == "linear":
+        reservoir_state = None
 
     # ----- TRAIN -----
     if args.mode == "snn":
@@ -111,6 +114,24 @@ def load_dataset_split(
         ):
             feat = np.load(path)
             X_train.append(feat)
+            y_train.append(1)
+    elif args.mode == "linear":
+        # ZERO
+        for path in tqdm(
+            glob.glob("audio_rc/reservoir_inputs/train/coch_zero/*.npy"),
+            desc="TRAIN ZERO (linear)",
+        ):
+            coch = np.load(path)
+            X_train.append(coch)
+            y_train.append(0)
+
+        # ONE
+        for path in tqdm(
+            glob.glob("audio_rc/reservoir_inputs/train/coch_one/*.npy"),
+            desc="TRAIN ONE (linear)",
+        ):
+            coch = np.load(path)
+            X_train.append(coch)
             y_train.append(1)
 
     # ----- TEST -----
@@ -166,6 +187,26 @@ def load_dataset_split(
         ):
             feat = np.load(path)
             X_test.append(feat)
+            y_test.append(1)
+            X_test_paths.append(path)
+    elif args.mode == "linear":
+        # ZERO
+        for path in tqdm(
+            glob.glob("audio_rc/reservoir_inputs/test/coch_zero/*.npy"),
+            desc="TEST ZERO (linear)",
+        ):
+            coch = np.load(path)
+            X_test.append(coch)
+            y_test.append(0)
+            X_test_paths.append(path)
+
+        # ONE
+        for path in tqdm(
+            glob.glob("audio_rc/reservoir_inputs/test/coch_one/*.npy"),
+            desc="TEST ONE (linear)",
+        ):
+            coch = np.load(path)
+            X_test.append(coch)
             y_test.append(1)
             X_test_paths.append(path)
 
@@ -302,7 +343,10 @@ def main_train(num_of_cells: int, seed: int) -> None:
 
     plt.figure(figsize=(4, 4))
     plt.imshow(conf, cmap="Blues")
-    plt.title(f"Confusion Matrix, N = {num_of_cells}")
+    if args.mode == "linear":
+        plt.title(f"Confusion Matrix (Linear)")
+    else:
+        plt.title(f"Confusion Matrix, N = {num_of_cells}")
     plt.xlabel("Predicted")
     plt.ylabel("True")
 
@@ -351,6 +395,7 @@ def main_train(num_of_cells: int, seed: int) -> None:
     Path("audio_rc/results").mkdir(exist_ok=True)
 
     result = {
+        "mode": args.mode,
         "seed": seed,
         "num_cells": num_of_cells,
         "acc_train": acc_train,
