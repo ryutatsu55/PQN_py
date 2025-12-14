@@ -18,8 +18,12 @@ def compute_cochleagram(audio_path: str, decimation_factor: int = 64) -> np.ndar
         y,
         int(sr),
         decimation_factor=decimation_factor,
-        step_factor=0.195,  # 微調整して100chにした
+        step_factor=0.195 * 6,  # 16ch
     )
+
+    print(f"original sampling duration : {1000/sr} [ms]")
+    print(f"decimated sampling duration : {1000*decimation_factor/sr} [ms]")
+
     return coch
 
 
@@ -39,10 +43,18 @@ def preprocess_with_lyon(audio_path: str, decimation_factor: int = 64) -> np.nda
     print(f"Cochleagram shape: {coch.shape}")
 
     # 2. 必要に応じて正規化や切り出しなどを実施
+
     # 例：チャネルごと平均0／分散1 にする
     coch_norm = (coch - np.mean(coch, axis=0, keepdims=True)) / (
         np.std(coch, axis=0, keepdims=True) + 1e-9
     )
+
+    # 0-1で正規化
+    # max_val = np.max(coch)
+    # if max_val > 0:
+    #     coch_norm = coch / max_val
+    # else:
+    #     coch_norm = coch
 
     return coch_norm
 
@@ -244,7 +256,7 @@ if __name__ == "__main__":
                 train_root=audio_root + folder,
                 out_dir=f"reservoir_inputs/{folder}/coch_{name}",  # 出力先フォルダ
                 word_codes=[code],  # 指定した単語コードのみ
-                decimation_factor=64,
+                decimation_factor=100,  # サンプリング時間の間引き
                 delete_wav=True,  # .wav は一時ファイルとして削除
                 n_jobs=None,  # CPU数 - 1 を自動で使用
                 build_big_tensor=True,

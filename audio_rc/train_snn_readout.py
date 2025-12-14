@@ -1,3 +1,4 @@
+import json
 import numpy as np
 import glob
 import argparse
@@ -17,9 +18,9 @@ import GPU_SNN_simulation
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--mode",
-    choices=["snn", "feature"],
+    choices=["snn", "feature", "linear"],
     default="feature",
-    help="snn: run SNN to compute features, feature: load saved feature .npy",
+    help="snn: run SNN to compute features, feature: load saved feature .npy, linear: use cochleagram directly",
 )
 parser.add_argument(
     "--cells",
@@ -28,6 +29,12 @@ parser.add_argument(
     default=100,
     help="number of reservoir cells (default: 100)",
 )
+parser.add_argument(
+    "--seed",
+    type=int,
+    default=123,
+    help="random seed (default: 123)",
+)
 args = parser.parse_args()
 
 
@@ -35,11 +42,26 @@ args = parser.parse_args()
 # 1. データ読み込み関数
 # ================================
 def load_dataset_split(
-    num_of_cells: int,
+    num_of_cells: int, seed: int
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[str]]:
     X_train, y_train = [], []
     X_test, y_test = [], []
     X_test_paths = []
+
+    # determine input dimension M (number of cochleagram channels)
+    sample_paths = glob.glob("audio_rc/reservoir_inputs/train/coch_zero/*.npy")
+    if len(sample_paths) == 0:
+        sample_paths = glob.glob("audio_rc/reservoir_inputs/train/coch_one/*.npy")
+    if len(sample_paths) == 0:
+        raise RuntimeError("No cochleagram .npy files found in train directories.")
+    sample_coch = np.load(sample_paths[0])
+    input_size = sample_coch.shape[1]
+    reservoir_state = GPU_SNN_simulation.init_reservoir(
+        N=num_of_cells, seed=seed, input_size=input_size
+    )
+    # If linear mode, we do not initialize or use the reservoir
+    if args.mode == "linear":
+        reservoir_state = None
 
     # ----- TRAIN -----
     if args.mode == "snn":
@@ -51,9 +73,10 @@ def load_dataset_split(
             coch = np.load(path)
             feat = GPU_SNN_simulation.main(
                 input_data=coch,
+                reservoir_state=reservoir_state,
                 label="zero",
                 return_feature=True,
-                isDebugPrint=False,
+                is_debug_print=False,
                 N=num_of_cells,
             )
             X_train.append(feat)
@@ -67,9 +90,10 @@ def load_dataset_split(
             coch = np.load(path)
             feat = GPU_SNN_simulation.main(
                 input_data=coch,
+                reservoir_state=reservoir_state,
                 label="one",
                 return_feature=True,
-                isDebugPrint=False,
+                is_debug_print=False,
                 N=num_of_cells,
             )
             X_train.append(feat)
@@ -91,6 +115,24 @@ def load_dataset_split(
             feat = np.load(path)
             X_train.append(feat)
             y_train.append(1)
+    elif args.mode == "linear":
+        # ZERO
+        for path in tqdm(
+            glob.glob("audio_rc/reservoir_inputs/train/coch_zero/*.npy"),
+            desc="TRAIN ZERO (linear)",
+        ):
+            coch = np.load(path)
+            X_train.append(coch)
+            y_train.append(0)
+
+        # ONE
+        for path in tqdm(
+            glob.glob("audio_rc/reservoir_inputs/train/coch_one/*.npy"),
+            desc="TRAIN ONE (linear)",
+        ):
+            coch = np.load(path)
+            X_train.append(coch)
+            y_train.append(1)
 
     # ----- TEST -----
     if args.mode == "snn":
@@ -102,9 +144,10 @@ def load_dataset_split(
             coch = np.load(path)
             feat = GPU_SNN_simulation.main(
                 input_data=coch,
+                reservoir_state=reservoir_state,
                 label="zero",
                 return_feature=True,
-                isDebugPrint=False,
+                is_debug_print=False,
                 N=num_of_cells,
             )
             X_test.append(feat)
@@ -118,9 +161,10 @@ def load_dataset_split(
             coch = np.load(path)
             feat = GPU_SNN_simulation.main(
                 input_data=coch,
+                reservoir_state=reservoir_state,
                 label="one",
                 return_feature=True,
-                isDebugPrint=False,
+                is_debug_print=False,
                 N=num_of_cells,
             )
             X_test.append(feat)
@@ -135,6 +179,7 @@ def load_dataset_split(
             feat = np.load(path)
             X_test.append(feat)
             y_test.append(0)
+            X_test_paths.append(path)
         # ONE features
         for path in tqdm(
             glob.glob("audio_rc/reservoir_outputs/test/features_one/*.npy"),
@@ -143,6 +188,27 @@ def load_dataset_split(
             feat = np.load(path)
             X_test.append(feat)
             y_test.append(1)
+            X_test_paths.append(path)
+    elif args.mode == "linear":
+        # ZERO
+        for path in tqdm(
+            glob.glob("audio_rc/reservoir_inputs/test/coch_zero/*.npy"),
+            desc="TEST ZERO (linear)",
+        ):
+            coch = np.load(path)
+            X_test.append(coch)
+            y_test.append(0)
+            X_test_paths.append(path)
+
+        # ONE
+        for path in tqdm(
+            glob.glob("audio_rc/reservoir_inputs/test/coch_one/*.npy"),
+            desc="TEST ONE (linear)",
+        ):
+            coch = np.load(path)
+            X_test.append(coch)
+            y_test.append(1)
+            X_test_paths.append(path)
 
     # shuffle
     perm_train = np.random.permutation(len(X_train))
@@ -155,10 +221,26 @@ def load_dataset_split(
     X_test = [X_test[i] for i in perm_test]
     y_test = [y_test[i] for i in perm_test]
 
+    # --- Pad sequences to T_max and flatten ---
+    def pad_and_flatten(x, T_max):
+        T, M = x.shape
+        if T < T_max:
+            pad = np.zeros((T_max - T, M), dtype=np.float32)
+            x = np.vstack([x, pad])
+        return x.reshape(-1).astype(np.float32)
+
+    if len(X_train) == 0:
+        raise RuntimeError("No training data loaded.")
+
+    T_max = max(x.shape[0] for x in X_train + X_test)
+
+    X_train_flat = np.stack([pad_and_flatten(x, T_max) for x in X_train])
+    X_test_flat = np.stack([pad_and_flatten(x, T_max) for x in X_test])
+
     return (
-        np.stack(X_train, axis=0),
+        X_train_flat,
         np.array(y_train),
-        np.stack(X_test, axis=0),
+        X_test_flat,
         np.array(y_test),
         X_test_paths,
     )
@@ -168,20 +250,20 @@ def load_dataset_split(
 # 2. 線形 readout の学習 (ridge regression)
 # ================================
 def train_readout(X: np.ndarray, y: np.ndarray, lambda_reg: float = 1e-2) -> np.ndarray:
-    num_samples, N = X.shape
+    num_samples, D = X.shape
     classes = np.unique(y)
     C = len(classes)
 
-    # one-hot 行列 Y (num_samples, C)
     Y = np.zeros((num_samples, C), dtype=np.float32)
     for i, label in enumerate(y):
         Y[i, label] = 1.0
 
-    I = np.eye(N, dtype=np.float32)
+    # K = X X^T : (num_samples, num_samples)
+    K = X @ X.T
+    I = np.eye(num_samples, dtype=np.float32)
 
-    # ridge regression closed form解
-    W_out = np.linalg.inv(X.T @ X + lambda_reg * I) @ (X.T @ Y)
-    # shape = (100, C)
+    alpha = np.linalg.inv(K + lambda_reg * I) @ Y  # (num_samples, C)
+    W_out = X.T @ alpha  # (D, C)
 
     return W_out
 
@@ -209,12 +291,26 @@ def evaluate(W_out: np.ndarray, X: np.ndarray, y: np.ndarray) -> float:
 # ================================
 # 5. メイン処理
 # ================================
-def main_train(num_of_cells: int) -> None:
+def main_train(num_of_cells: int, seed: int) -> None:
     print(f"Mode: {args.mode}")
+    print(f"Number of reservoir cells: {num_of_cells}")
+    print(f"Random seed: {seed}")
     print("Loading dataset...")
-    X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(num_of_cells)
+    X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(
+        num_of_cells, seed
+    )
     print("Train shape:", X_train.shape)
     print("Test  shape:", X_test.shape)
+
+    # load_dataset_split の戻り値を受け取った直後あたりに追加
+    print("zero feat mean:", X_train[y_train == 0].mean(axis=0)[:10])
+    print("one  feat mean:", X_train[y_train == 1].mean(axis=0)[:10])
+    print(
+        "difference norm:",
+        np.linalg.norm(
+            X_train[y_train == 0].mean(axis=0) - X_train[y_train == 1].mean(axis=0)
+        ),
+    )
 
     print("Training readout...")
     W_out = train_readout(X_train, y_train, lambda_reg=1e-2)
@@ -247,7 +343,10 @@ def main_train(num_of_cells: int) -> None:
 
     plt.figure(figsize=(4, 4))
     plt.imshow(conf, cmap="Blues")
-    plt.title(f"Confusion Matrix, N = {num_of_cells}")
+    if args.mode == "linear":
+        plt.title(f"Confusion Matrix (Linear)")
+    else:
+        plt.title(f"Confusion Matrix, N = {num_of_cells}")
     plt.xlabel("Predicted")
     plt.ylabel("True")
 
@@ -289,10 +388,25 @@ def main_train(num_of_cells: int) -> None:
     if len(misclassified) == 0:
         print("  None! Perfect classification.")
     else:
-        for path, true_label, pred_label in misclassified:
-            print(f"  {path}  true={true_label}, pred={pred_label}")
+        print(len(misclassified), "files misclassified.")
+        # for path, true_label, pred_label in misclassified:
+        #     print(f"  {path}  true={true_label}, pred={pred_label}")
+
+    Path("audio_rc/results").mkdir(exist_ok=True)
+
+    result = {
+        "mode": args.mode,
+        "seed": seed,
+        "num_cells": num_of_cells,
+        "acc_train": acc_train,
+        "acc_test": acc_test,
+    }
+
+    with open("audio_rc/results/results.jsonl", "a") as f:
+        f.write(json.dumps(result) + "\n")
 
 
 if __name__ == "__main__":
     num_of_cells = args.cells
-    main_train(num_of_cells)
+    seed = args.seed
+    main_train(num_of_cells, seed)

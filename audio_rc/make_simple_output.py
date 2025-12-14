@@ -41,18 +41,26 @@ def process_and_save(
     for i, path in enumerate(tqdm(paths)):
         coch = np.load(path)
 
+        density = 0.1
         # ---- SNN 実行（特徴ベクトルを得る） ----
         is_last_iteration = (i == len(paths) - 1)
-        feat = GPU_SNN_simulation.main(
-            input_data=coch,
-            label=label,
-            return_feature=True,
-            isDebugPrint=False,
-            Nin=num_of_cells,
-            density=0.8,
-            N = num_of_cells,
-            record=is_last_iteration,
-        )  # shape = (100,) or (200,)
+        # feat = GPU_SNN_simulation.main(
+        #     input_data=coch,
+        #     label=label,
+        #     return_feature=True,
+        #     isDebugPrint=False,
+        #     Nin=num_of_cells,
+        #     density,
+        #     N = num_of_cells,
+        #     record=is_last_iteration,
+        # )  # shape = (100,) or (200,)
+
+        M = coch.shape[1]
+        W_in = np.random.uniform(0.0, 1.0, size=(M, num_of_cells)).astype(np.float32)
+        ch_mask = np.random.choice([0, 1], size=(M, num_of_cells),p=[1-density, density]).astype(np.float32)
+        W_in = W_in * ch_mask
+        projected_input = coch @ W_in
+        feat = coch.mean(axis=0)  # ダミー実装
 
         # ---- 保存するファイル名 ----
         filename = os.path.basename(path)  # ex: zero_01.npy

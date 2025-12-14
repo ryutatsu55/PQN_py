@@ -14,14 +14,14 @@ import os
 from src.PQN import PQNparam
 
 
-# SEED = int(random.random() * 1000)
-SEED = 678
+SEED = int(random.random() * 1000)
+# SEED = 678
 random.seed(SEED)  # for reproducibility
 np.random.seed(SEED)
 
-record = True
-record = False
-if record:
+# REC = True
+REC = False
+if REC:
     DATE = time.strftime("%Y%m%d")
     TIMESTAMP = time.strftime("%H%M")
     OUTDIR = f"sim_results/{DATE}/{TIMESTAMP}_SEED{SEED}"
@@ -47,10 +47,14 @@ mat_vec_mul = module.get_function("mat_vec_mul")
 # -------------------------------------------------------------
 def main(
     input_data: np.ndarray | None = None,
+    reservoir_state=None,
     label: str = "unknown",
     return_feature: bool = False,
-    isDebugPrint: bool = True,
-    N: int = 100,
+    is_debug_print: bool = True,
+    Nin: int = 100,
+    density: float = 0.1,
+    N: int = 500,
+    record: bool = False,
 ):
     """
     SNNシミュレーションのメイン関数
@@ -62,19 +66,40 @@ def main(
     # --- 初期設定 ---
     tmax = 10  # [s]
     dt = 1e-4
+    S_durt = 8e-3  # 8[ms]
     # --- 外部入力がある場合はシミュレーション長とtmaxを調整 ---
     if input_data is not None:
-        num_steps = input_data.shape[0]
-        tmax = num_steps * dt
+        tmax = (
+            input_data.shape[0] * S_durt
+        )  # assuming input_data was downsampled to 125Hz
+        num_steps = int(tmax / dt)
     else:
         num_steps = int(tmax / dt)
-    # CPU-side linear projection of input_data (M -> N)
+
+    # --- layer definition: input, reservoir, output ---
+    # --- layer definition replaced: now using reservoir_state indices ---
+    if reservoir_state is None:
+        raise ValueError("reservoir_state must be provided.")
+    input_indices = reservoir_state["input_indices"]
+    output_indices = reservoir_state["output_indices"]
+    Nin_layer = len(input_indices)
+    Nout_layer = len(output_indices)
+    # if input_data is not None:
+    #     num_steps = input_data.shape[0]
+    #     tmax = num_steps * dt
+    # else:
+    #     num_steps = int(tmax / dt)
+
+    # CPU-side linear projection of input_data (M -> Nin_layer)
     projected_input = None
     if input_data is not None:
         M = input_data.shape[1]
+        # 入力チャンネル数分だけ入力層を用意し、そのニューロンにのみ外部入力を与える
         rng = np.random.default_rng(42)
-        W_in = rng.normal(0, 1, size=(M, N)).astype(np.float32)
+        W_in = rng.normal(0, 1, size=(M, M)).astype(np.float32)
+        # shape: (T, Nin_layer)  → 入力層ニューロンの「前処理された入力」
         projected_input = input_data @ W_in
+
     v = np.zeros((num_steps, N))
     rasters = np.zeros((num_steps, N), dtype=np.uint8)
     input = np.zeros((num_steps, N), dtype=np.float32)
@@ -102,13 +127,22 @@ def main(
     RSinhi_param_h = param_h_init(RSinhi)
 
     # ---- 重み行列の作成 ----
-    k = 0.03
-    resovoir_origin, mask, type = create_moduled_matrix(N)
-    # resovoir_origin, mask = create_random_matrix(N)
-    resovoir_weight = np.copy(resovoir_origin)
-    resovoir_weight = resovoir_weight * k
-    visualize_matrix(resovoir_origin, plot_num)
-    plot_num += 1
+    if reservoir_state is None:
+        raise ValueError("reservoir_state must be provided.")
+    resovoir_weight = reservoir_state["resovoir_weight"]
+    mask = reservoir_state["mask"]
+    type = reservoir_state["type"]
+    N_S = reservoir_state["N_S"]
+    tau_rec_h = reservoir_state["tau_rec_h"]
+    tau_inact_h = reservoir_state["tau_inact_h"]
+    tau_faci_h = reservoir_state["tau_faci_h"]
+    U1_h = reservoir_state["U1_h"]
+    U_h = reservoir_state["U_h"]
+    mask_faci_h = reservoir_state["mask_faci_h"]
+    neuron_from_h = reservoir_state["neuron_from_h"]
+    calc_matrix_h = reservoir_state["calc_matrix_h"]
+    neuron_to_h = reservoir_state["neuron_to_h"]
+    delayed_row_h = reservoir_state["delayed_row_h"]
 
     for i in range(N):
         if type[0, i] == 1:
@@ -122,15 +156,8 @@ def main(
             Qs_h[i] = RSinhi.state_variable_q
             neuron_type_h[i] = 1
 
-    N_S = np.count_nonzero(resovoir_weight)
-
     td_float32 = np.float32(1e-2)
     tr_float32 = np.float32(5e-3)
-    tau_rec_h, tau_inact_h, tau_faci_h, U1_h, U_h, mask_faci_h = synapses_init(
-        resovoir_weight, N, N_S
-    )
-    neuron_from_h, calc_matrix_h, neuron_to_h = calc_init(resovoir_weight, N, N_S)
-    delayed_row_h = delay_init(resovoir_weight, N, N_S, mask)
 
     # 4. デバイス側(GPU)にメモリを確保し、データを転送
     RSexci_param_d, RSexci_param_d_size = module.get_global("RSexci_param")
@@ -184,6 +211,7 @@ def main(
     arrival_spike_d = gpuarray.zeros(N_S, dtype=np.uint8)
     spike_in_d = gpuarray.to_gpu(spike_in_h)
     synapses_out_d = gpuarray.zeros(N, dtype=np.float32)
+    I_input_d = gpuarray.zeros(N, dtype=np.float32)
 
     # 5. カーネルの実行設定
     neuron_threads_per_block = 256
@@ -197,7 +225,10 @@ def main(
 
     # 6. シミュレーションループ
     start = time.perf_counter()
-    loop_iter = tqdm(range(num_steps)) if isDebugPrint else range(num_steps)
+    loop_iter = tqdm(range(num_steps)) if is_debug_print else range(num_steps)
+
+    # 各ニューロンに対するスパイク生成確率（入力層のみ非ゼロ）
+    prob_all = np.zeros(N, dtype=np.float32)
 
     for i in loop_iter:
         read_idx = np.int32(i % buffer_size)
@@ -206,6 +237,7 @@ def main(
             Ns_d.gpudata,
             Qs_d.gpudata,
             neuron_type_d.gpudata,
+            I_input_d.gpudata,
             synapses_out_d.gpudata,
             last_spike_d.gpudata,
             raster_d.gpudata,
@@ -260,19 +292,43 @@ def main(
         event_update_input.record(stream2)
 
         stream3.wait_for_event(event_update_neuron)
-        cuda.memcpy_dtoh_async(Vs_h, Vs_d.gpudata, stream=stream3)
+        if record:
+            cuda.memcpy_dtoh_async(Vs_h, Vs_d.gpudata, stream=stream3)
         cuda.memcpy_dtoh_async(rasters[i], raster_d.gpudata, stream=stream3)
 
-        if projected_input is not None and i < num_steps:
-            prob = 1 / (1 + np.exp(-projected_input[i]))  # sigmoid on projected input
-            spike_in_h = (np.random.rand(N) < prob).astype(np.uint8)
-        else:
-            spike_in_h = np.zeros(N, dtype=np.uint8)
+        steps_per_frame = int(round(S_durt / dt))
+        if projected_input is not None:
+            # S_durt ごとに入力フレームを1ステップ進める
+            if i % steps_per_frame == 0:
+                idx = i // steps_per_frame
+                if idx >= projected_input.shape[0]:
+                    idx = projected_input.shape[0] - 1
+                # 入力層ニューロン用の確率のみ更新
+                prob_input = 1 / (1 + np.exp(-projected_input[idx]))
+                prob_all[:] = 0.0
+                prob_all[input_indices] = prob_input
+
+        # 入力層ニューロンのみ確率的スパイクを発火させる
+        spike_in_h = (np.random.rand(N) < prob_all).astype(np.uint8)
         cuda.memcpy_htod_async(spike_in_d.gpudata, spike_in_h, stream=stream3)
 
+        # if i%(S_durt/dt) == 0:
+        #     idx =  int(i/(S_durt/dt)-1)
+        #     I_input_h = projected_input[idx].astype(np.float32)
+        #     cuda.memcpy_htod_async(I_input_d.gpudata, I_input_h, stream=stream3)
+
+        # if projected_input is not None and i < num_steps:
+        #     prob = 1 / (1 + np.exp(-projected_input[i]))  # sigmoid on projected input
+        #     spike_in_h = (np.random.rand(N) < prob).astype(np.uint8)
+        # else:
+        #     spike_in_h = np.zeros(N, dtype=np.uint8)
+        # cuda.memcpy_htod_async(spike_in_d.gpudata, spike_in_h, stream=stream3)
+
         stream3.synchronize()
-        v[i] = Vs_h
-        rasters[i] = rasters[i] | spike_in_h
+        if record:
+            v[i] = Vs_h
+            # input[i] = I_input_h
+        # rasters[i] = rasters[i] | spike_in_h
         # stream2.synchronize()
         # stream1.synchronize()
         # input[i] = x_d.get()
@@ -282,28 +338,27 @@ def main(
 
     end = time.perf_counter()
 
-    if isDebugPrint:
+    if is_debug_print:
         print(
             f"processing time for {tmax}s simulation mas {(end - start)} s when reservoir_size was {N}"
         )
         print(f"SEED value was {SEED}")
     v = v / 2**RSexci.BIT_WIDTH_FRACTIONAL
     # ---- plot simulation result ----
-    plot_single_neuron(0, dt, tmax, num_steps, input, v, plot_num, label)
-    plot_num += 1
+    if record:
+        plot_single_neuron(0, dt, tmax, num_steps, input, v, plot_num, label)
+        plot_num += 1
 
-    plot_raster(dt, tmax, rasters, N, plot_num)
-    plot_num += 1
+        plot_raster(dt, tmax, rasters, N, plot_num)
+        plot_num += 1
 
     # plt.show()
 
     if return_feature:
-        plt.close(
-            "all"
-        )  # プロットウィンドウを閉じる これがないとエラーが出る場合がある
-
-        firing_rate = rasters.mean(axis=0).astype(np.float32)  # shape = (100,)
-        return firing_rate
+        plt.close("all")
+        read_indices = reservoir_state["output_indices"]
+        x_t = rasters[:, read_indices].astype(np.float32)  # shape = (T, M)
+        return x_t
 
 
 def param_h_init(PQN):
@@ -482,6 +537,43 @@ def delay_init(resovoir_weight, N, N_S, mask):
     return delay_row
 
 
+def init_reservoir(N, seed, input_size):
+    random.seed(seed)
+    np.random.seed(seed)
+    resovoir_origin, mask, type = create_moduled_matrix(N)
+    resovoir_weight = np.copy(resovoir_origin) * 0.03
+    N_S = np.count_nonzero(resovoir_weight)
+    tau_rec_h, tau_inact_h, tau_faci_h, U1_h, U_h, mask_faci_h = synapses_init(
+        resovoir_weight, N, N_S
+    )
+    neuron_from_h, calc_matrix_h, neuron_to_h = calc_init(resovoir_weight, N, N_S)
+    delayed_row_h = delay_init(resovoir_weight, N, N_S, mask)
+
+    rng = np.random.default_rng(seed)
+
+    input_indices = rng.choice(N, size=input_size, replace=False)
+    remaining = np.setdiff1d(np.arange(N), input_indices)
+    output_indices = rng.choice(remaining, size=input_size, replace=False)
+    return {
+        "resovoir_weight": resovoir_weight,
+        "mask": mask,
+        "type": type,
+        "N_S": N_S,
+        "tau_rec_h": tau_rec_h,
+        "tau_inact_h": tau_inact_h,
+        "tau_faci_h": tau_faci_h,
+        "U1_h": U1_h,
+        "U_h": U_h,
+        "mask_faci_h": mask_faci_h,
+        "neuron_from_h": neuron_from_h,
+        "calc_matrix_h": calc_matrix_h,
+        "neuron_to_h": neuron_to_h,
+        "delayed_row_h": delayed_row_h,
+        "input_indices": input_indices,
+        "output_indices": output_indices,
+    }
+
+
 def visualize_matrix(matrix, num):
     plt.figure(num=num, figsize=(8, 6))
     max_abs = np.max(np.abs(matrix))
@@ -494,7 +586,7 @@ def visualize_matrix(matrix, num):
     plt.tight_layout()
     save_path = os.path.join("graphs", "resovoir_weight_matrix.png")
     plt.savefig(save_path)
-    if record:
+    if REC:
         save_path = os.path.join(OUTDIR, "resovoir_weight_matrix.png")
         plt.savefig(save_path)
 
@@ -516,7 +608,7 @@ def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, num, label):
     ax1.set_xlabel("[s]")
     save_path = os.path.join("graphs", "single_neuron.png")
     plt.savefig(save_path)
-    if record:
+    if REC:
         save_path = os.path.join(OUTDIR, f"single_neuron_{label}.png")
         plt.savefig(save_path)
 
@@ -538,7 +630,7 @@ def plot_raster(dt, tmax, rasters, N, num):
     plt.tight_layout()
     save_path = os.path.join("graphs", "raster.png")
     plt.savefig(save_path)
-    if record:
+    if REC:
         save_path = os.path.join(OUTDIR, "raster.png")
         plt.savefig(save_path)
 
@@ -550,5 +642,5 @@ if __name__ == "__main__":
     # profiler.print_stats()
 
     coch = np.load("coch_zero.npy")
-
-    main(input_data=coch, label="cochleagram")
+    reservoir = init_reservoir(N=500, seed=123)
+    main(input_data=coch, reservoir_state=reservoir, label="cochleagram")
