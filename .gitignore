@@ -109,4 +109,7 @@ sim_results/*
 
 graphs/*
 
+RNN_analyze/reservoir_inputs
+RNN_analyze/reservoir_outputs
+
 .vscode/*
