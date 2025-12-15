@@ -3,11 +3,12 @@ import numpy as np
 import glob
 import argparse
 from datetime import datetime
+from collections import Counter
 
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-import sys
+import os
 from pathlib import Path
 
 import PQN_RNN_onGPU
@@ -55,11 +56,12 @@ def load_dataset_split(
     sample_coch = np.load(sample_paths[0])
     input_size = sample_coch.shape[1]
     # print(sample_coch.shape)
-    reservoir_state = RNN_config.init_reservoir(
+    # If linear mode, we do not initialize or use the reservoir
+    if args.mode != "linear":
+        reservoir_state = RNN_config.init_reservoir(
         N=num_of_cells, seed=seed, input_size=input_size
     )
-    # If linear mode, we do not initialize or use the reservoir
-    if args.mode == "linear":
+    else:
         reservoir_state = None
 
     # ----- TRAIN -----
@@ -367,8 +369,9 @@ def main_train(num_of_cells: int, seed: int) -> None:
     print("Test  shape:", X_test.shape)
 
     # load_dataset_split の戻り値を受け取った直後あたりに追加
-    print("zero feat mean:", X_train[y_train == 0].mean(axis=0)[:10])
-    print("one  feat mean:", X_train[y_train == 1].mean(axis=0)[:10])
+    print("top feat mean:", X_train[y_train == 0].mean(axis=0)[:10])
+    print("middle feat mean:", X_train[y_train == 1].mean(axis=0)[40:50])
+    print("bottom feat mean:", X_train[y_train == 2].mean(axis=0)[80:90])
     print(
         "difference norm:",
         np.linalg.norm(
@@ -402,7 +405,7 @@ def main_train(num_of_cells: int, seed: int) -> None:
     print("\nConfusion Matrix (rows=True, cols=Pred):")
     print(conf)
     print(f"\nTrue TOP predicted as TOP: {conf[0,0]} / {conf[0].sum()}")
-    print(f"True MIDDLE predicted as MIDDLE:   {conf[1,1]} / {conf[1].sum()}\n")
+    print(f"True MIDDLE predicted as MIDDLE:   {conf[1,1]} / {conf[1].sum()}")
     print(f"True BOTTOM predicted as BOTTOM:   {conf[2,2]} / {conf[2].sum()}\n")
 
     # --- Save confusion matrix as image ---
@@ -417,8 +420,10 @@ def main_train(num_of_cells: int, seed: int) -> None:
     plt.ylabel("True")
 
     # set axis ticks
-    plt.xticks([0, 1], ["0", "1", "2"])
-    plt.yticks([0, 1], ["0", "1", "2"])
+    # plt.xticks([0, 1], ["0", "1"])
+    # plt.yticks([0, 1], ["0", "1"])
+    plt.xticks([0, 1, 2], ["Top", "Middle", "Bottom"])
+    plt.yticks([0, 1, 2], ["Top", "Middle", "Bottom"])
 
     # annotate cells
     for i in range(num_classes):
@@ -440,6 +445,7 @@ def main_train(num_of_cells: int, seed: int) -> None:
     folder = datetime.now().strftime("%Y%m%d")
     timestamp = datetime.now().strftime("%H%M")
     filename = "confusion_matrix_.png"
+    os.makedirs(f"RNN_analyze/figs/{folder}/{timestamp}", exist_ok=True)
     plt.savefig(f"RNN_analyze/figs/{folder}/{timestamp}/{filename}")
     plt.close()
     print(f"Saved {filename}")
@@ -469,7 +475,7 @@ def main_train(num_of_cells: int, seed: int) -> None:
         "acc_test": acc_test,
     }
 
-    with open("audio_rc/results/results.jsonl", "a") as f:
+    with open("RNN_analyze/results.jsonl", "a") as f:
         f.write(json.dumps(result) + "\n")
 
 
