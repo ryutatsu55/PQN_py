@@ -35,25 +35,17 @@ means = []
 stds = []
 scatter_data = []  # snn 用
 
-# ---- linear ----
-if ("linear", TARGET_NUM_CELLS) in acc_dict:
-    accs = acc_dict[("linear", TARGET_NUM_CELLS)]
-    labels.append("linear")
-    means.append(np.mean(accs))
-    stds.append(np.std(accs))
-    scatter_data.append(None)  # 点プロットなし
-else:
-    raise ValueError("linear result not found")
+# ---- snn / linear ----
+for mode in ("snn", "linear"):
+    key = (mode, TARGET_NUM_CELLS)
+    if key not in acc_dict:
+        raise ValueError(f"{mode} result not found")
 
-# ---- snn ----
-if ("snn", TARGET_NUM_CELLS) in acc_dict:
-    accs = acc_dict[("snn", TARGET_NUM_CELLS)]
-    labels.append("snn")
+    accs = acc_dict[key]
+    labels.append(mode)
     means.append(np.mean(accs))
     stds.append(np.std(accs))
-    scatter_data.append(accs)
-else:
-    raise ValueError("snn result not found")
+    scatter_data.append(accs if mode == "snn" else None)
 
 # =========================
 # plot
