@@ -6,7 +6,7 @@ def init_reservoir(N, seed=0, input_size=120):
     random.seed(seed)
     np.random.seed(seed)
     resovoir_origin, mask, type = create_moduled_matrix(N)
-    resovoir_weight = np.copy(resovoir_origin) * 0.03
+    resovoir_weight = np.copy(resovoir_origin) * 0.01
     N_S = np.count_nonzero(resovoir_weight)
     tau_rec_h, tau_inact_h, tau_faci_h, U1_h, U_h, mask_faci_h = synapses_init(resovoir_weight, N, N_S)
     neuron_from_h, calc_matrix_h, neuron_to_h = calc_init(resovoir_weight, N, N_S)
@@ -20,7 +20,7 @@ def init_reservoir(N, seed=0, input_size=120):
          raise ValueError(f"num of neuron N={N} is too small")
     output_indices = np.random.choice(candidate_indices, 60, replace=False)
     return {
-        "resovoir_weight": resovoir_origin,
+        "reservoir_weight": resovoir_origin,
         "mask": mask,
         "type": type,
         "N_S": N_S,

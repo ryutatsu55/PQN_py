@@ -100,7 +100,7 @@ def main(
         # shape: (T, Nin_layer)  → 入力層ニューロンの「前処理された入力」
         projected_input = input_data @ W_in
 
-    v = np.zeros((num_steps, N))
+    v = np.zeros((num_steps, N), dtype=np.int64)
     rasters = np.zeros((num_steps, N), dtype=np.uint8)
     input = np.zeros((num_steps, N), dtype=np.float32)
     buffer_size = 1001
@@ -284,6 +284,7 @@ def main(
             cuda.memcpy_dtoh_async(v[i], Vs_d.gpudata, stream=stream3)
             # cuda.memcpy_dtoh_async(input[i], synapses_out_d.gpudata, stream=stream3)
         cuda.memcpy_dtoh_async(rasters[i], raster_d.gpudata, stream=stream3)
+        # rasters[i] = spike_in_h
 
         steps_per_frame = int(round(S_durt / dt))
         if input_data is not None:
@@ -293,7 +294,8 @@ def main(
                 if idx >= input_data.shape[0]:
                     idx = input_data.shape[0] - 1
                 # 入力層ニューロン用の確率のみ更新
-                prob_input = 1 / (1 + np.exp(-input_data[idx]))
+                # prob_input = 1 / (1 + np.exp(-input_data[idx]))
+                prob_input = input_data[idx]
                 prob_all[:] = 0.0
                 prob_all[input_indices] = prob_input
 
@@ -333,6 +335,7 @@ def main(
     # ---- plot simulation result ----
     if record:
         visualize_matrix(reservoir_state["reservoir_weight"], plot_num)
+        plot_num += 1
 
         plot_single_neuron(0, dt, tmax, num_steps, input, v, plot_num)
         plot_num += 1
@@ -407,7 +410,7 @@ def visualize_matrix(matrix, num):
     plt.ylabel("Post Neuron")
     plt.tight_layout()
     save_path = os.path.join("figs", "resovoir_weight_matrix.png")
-    plt.savefig(save_path)
+    plt.savefig("RNN_analyze/figs/resovoir_weight_matrix.png")
     if REC:
         save_path = os.path.join(OUTDIR, "resovoir_weight_matrix.png")
         plt.savefig(save_path)
@@ -429,7 +432,7 @@ def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, num):
     ax0.set_ylabel("I")
     ax1.set_xlabel("[s]")
     save_path = os.path.join("figs", "single_neuron.png")
-    plt.savefig(save_path)
+    plt.savefig("RNN_analyze/figs/single_neuron.png")
     if REC:
         save_path = os.path.join(OUTDIR, f"single_neuron.png")
         plt.savefig(save_path)
@@ -451,7 +454,7 @@ def plot_raster(dt, tmax, rasters, N, num):
     plt.title("Raster Plot")
     plt.tight_layout()
     save_path = os.path.join("figs", "raster.png")
-    plt.savefig(save_path)
+    plt.savefig("RNN_analyze/figs/raster.png")
     if REC:
         save_path = os.path.join(OUTDIR, "raster.png")
         plt.savefig(save_path)

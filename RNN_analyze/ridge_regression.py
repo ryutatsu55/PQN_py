@@ -67,10 +67,10 @@ def load_dataset_split(
     # ----- TRAIN -----
     if args.mode == "snn":
         # TOP
-        for path in tqdm(
-            glob.glob("RNN_analyze/reservoir_inputs/train/top/*.npy"),
-            desc="TRAIN TOP",
-        ):
+        path_list = glob.glob("RNN_analyze/reservoir_inputs/train/top/*.npy")
+        total_files = len(path_list)
+        for i, path in enumerate(tqdm(path_list, desc="TRAIN TOP")):
+            is_last_loop = (i == total_files - 1)
             input = np.load(path)
             feat = PQN_RNN_onGPU.main(
                 input_data=input,
@@ -78,15 +78,16 @@ def load_dataset_split(
                 return_feature=True,
                 is_debug_print=False,
                 N=num_of_cells,
+                record = is_last_loop,
             )
             X_train.append(feat)
             y_train.append(0)
 
         # MIDDLE
-        for path in tqdm(
-            glob.glob("RNN_analyze/reservoir_inputs/train/middle/*.npy"),
-            desc="TRAIN MIDDLE",
-        ):
+        path_list = glob.glob("RNN_analyze/reservoir_inputs/train/middle/*.npy")
+        total_files = len(path_list)
+        for i, path in enumerate(tqdm(path_list, desc="TRAIN MIDDLE")):
+            is_last_loop = (i == total_files - 1)
             input = np.load(path)
             feat = PQN_RNN_onGPU.main(
                 input_data=input,
@@ -94,15 +95,16 @@ def load_dataset_split(
                 return_feature=True,
                 is_debug_print=False,
                 N=num_of_cells,
+                record = is_last_loop,
             )
             X_train.append(feat)
             y_train.append(1)
 
         # BOTTOM
-        for path in tqdm(
-            glob.glob("RNN_analyze/reservoir_inputs/train/bottom/*.npy"),
-            desc="TRAIN BOTTOM",
-        ):
+        path_list = glob.glob("RNN_analyze/reservoir_inputs/train/bottom/*.npy")
+        total_files = len(path_list)
+        for i, path in enumerate(tqdm(path_list, desc="TRAIN BOTTOM")):
+            is_last_loop = (i == total_files - 1)
             input = np.load(path)
             feat = PQN_RNN_onGPU.main(
                 input_data=input,
@@ -110,6 +112,7 @@ def load_dataset_split(
                 return_feature=True,
                 is_debug_print=False,
                 N=num_of_cells,
+                record = is_last_loop,
             )
             X_train.append(feat)
             y_train.append(2)
@@ -171,10 +174,10 @@ def load_dataset_split(
     # ----- TEST -----
     if args.mode == "snn":
         # TOP
-        for path in tqdm(
-            glob.glob("RNN_analyze/reservoir_inputs/test/top/*.npy"),
-            desc="TEST TOP",
-        ):
+        path_list = glob.glob("RNN_analyze/reservoir_inputs/test/top/*.npy")
+        total_files = len(path_list)
+        for i, path in enumerate(tqdm(path_list, desc="TEST TOP")):
+            is_last_loop = (i == total_files - 1)
             input = np.load(path)
             feat = PQN_RNN_onGPU.main(
                 input_data=input,
@@ -182,16 +185,17 @@ def load_dataset_split(
                 return_feature=True,
                 is_debug_print=False,
                 N=num_of_cells,
+                record=is_last_loop,
             )
             X_test.append(feat)
             y_test.append(0)
             X_test_paths.append(path)
 
         # MIDDLE
-        for path in tqdm(
-            glob.glob("RNN_analyze/reservoir_inputs/test/middle/*.npy"),
-            desc="TEST MIDDLE"
-        ):
+        path_list = glob.glob("RNN_analyze/reservoir_inputs/test/middle/*.npy")
+        total_files = len(path_list)
+        for i, path in enumerate(tqdm(path_list, desc="TEST MIDDLE")):
+            is_last_loop = (i == total_files - 1)
             input = np.load(path)
             feat = PQN_RNN_onGPU.main(
                 input_data=input,
@@ -199,16 +203,17 @@ def load_dataset_split(
                 return_feature=True,
                 is_debug_print=False,
                 N=num_of_cells,
+                record=is_last_loop,
             )
             X_test.append(feat)
             y_test.append(1)
             X_test_paths.append(path)
 
         # BOTTOM
-        for path in tqdm(
-            glob.glob("RNN_analyze/reservoir_inputs/test/bottom/*.npy"),
-            desc="TEST BOTTOM"
-        ):
+        path_list = glob.glob("RNN_analyze/reservoir_inputs/test/bottom/*.npy")
+        total_files = len(path_list)
+        for i, path in enumerate(tqdm(path_list, desc="TEST BOTTOM")):
+            is_last_loop = (i == total_files - 1)
             input = np.load(path)
             feat = PQN_RNN_onGPU.main(
                 input_data=input,
@@ -216,6 +221,7 @@ def load_dataset_split(
                 return_feature=True,
                 is_debug_print=False,
                 N=num_of_cells,
+                record=is_last_loop,
             )
             X_test.append(feat)
             y_test.append(2)
