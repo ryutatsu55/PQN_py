@@ -284,6 +284,7 @@ def main(
             cuda.memcpy_dtoh_async(v[i], Vs_d.gpudata, stream=stream3)
             # cuda.memcpy_dtoh_async(input[i], synapses_out_d.gpudata, stream=stream3)
         cuda.memcpy_dtoh_async(rasters[i], raster_d.gpudata, stream=stream3)
+        cuda.memcpy_dtoh_async(input[i], synapses_out_d.gpudata, stream=stream3)
         # rasters[i] = spike_in_h
 
         steps_per_frame = int(round(S_durt / dt))
@@ -295,7 +296,7 @@ def main(
                     idx = input_data.shape[0] - 1
                 # 入力層ニューロン用の確率のみ更新
                 # prob_input = 1 / (1 + np.exp(-input_data[idx]))
-                prob_input = input_data[idx]
+                prob_input = 10*dt*input_data[idx]
                 prob_all[:] = 0.0
                 prob_all[input_indices] = prob_input
 
@@ -316,7 +317,7 @@ def main(
         # cuda.memcpy_htod_async(spike_in_d.gpudata, spike_in_h, stream=stream3)
 
         stream3.synchronize()
-        # rasters[i] = rasters[i] | spike_in_h
+        rasters[i] = rasters[i] | spike_in_h
         # stream2.synchronize()
         # stream1.synchronize()
         # input[i] = x_d.get()
@@ -348,7 +349,7 @@ def main(
     if return_feature:
         plt.close("all")
         read_indices = reservoir_state["output_indices"]
-        x_t = rasters[:, read_indices].astype(np.float32)  # shape = (T, Nout)
+        x_t = input[:, read_indices].astype(np.float32)  # shape = (T, Nout)
         return x_t
 
 
@@ -446,7 +447,7 @@ def plot_raster(dt, tmax, rasters, N, num):
     cluster_id = (neuron_ids) // (N // 4)  # 0,1,2,3 のクラスタID
     colors = [cluster_colors[c % 4] for c in cluster_id]
     plt.figure(num=num, figsize=(9, 5))
-    plt.scatter(times, neuron_ids, s=0.1, color=colors)
+    plt.scatter(times, neuron_ids, s=1.1, color=colors)
     plt.xlabel("time")
     plt.xlim(0, tmax)
     plt.ylabel("neuron ID")

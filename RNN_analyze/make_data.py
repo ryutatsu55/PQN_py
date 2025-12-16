@@ -5,7 +5,7 @@ import os
 dt = 0.01  # シミュレーションのタイムステップ (例えば10ms)
 n_neurons = 40
 duration_stim = int(0.1 / dt) # 100ms
-duration_interval = int(2.5 / dt) # 2.5s
+duration_interval = int(0.5 / dt) # 2.5s
 Ntrain = 100
 Ntest = 100
 dirs_to_create = [
@@ -22,7 +22,7 @@ for directory in dirs_to_create:
 for i in range(Ntrain):
     input = np.zeros((duration_interval, 3*n_neurons), dtype=float)
     target = np.random.randint(0,3)
-    input[:duration_stim, target*n_neurons:(target+1)*n_neurons] = 1.0
+    input[:duration_stim, target*n_neurons:(target+1)*n_neurons] = 0.8
     # print(input.shape)
     if target == 0:
         np.save(f"RNN_analyze/reservoir_inputs/train/top/{i}.npy", input)
@@ -35,7 +35,7 @@ for i in range(Ntrain):
 for i in range(Ntest):
     input = np.zeros((duration_interval, 3*n_neurons), dtype=float)
     target = np.random.randint(0,3)
-    input[:duration_stim, target*n_neurons:(target+1)*n_neurons] = 1.0
+    input[:duration_stim, target*n_neurons:(target+1)*n_neurons] = 0.8
     if target == 0:
         np.save(f"RNN_analyze/reservoir_inputs/test/top/{i}.npy", input)
     elif target == 1:

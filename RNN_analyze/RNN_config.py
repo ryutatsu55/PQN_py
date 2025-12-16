@@ -6,7 +6,7 @@ def init_reservoir(N, seed=0, input_size=120):
     random.seed(seed)
     np.random.seed(seed)
     resovoir_origin, mask, type = create_moduled_matrix(N)
-    resovoir_weight = np.copy(resovoir_origin) * 0.01
+    resovoir_weight = np.copy(resovoir_origin) * 0.02
     N_S = np.count_nonzero(resovoir_weight)
     tau_rec_h, tau_inact_h, tau_faci_h, U1_h, U_h, mask_faci_h = synapses_init(resovoir_weight, N, N_S)
     neuron_from_h, calc_matrix_h, neuron_to_h = calc_init(resovoir_weight, N, N_S)
@@ -41,21 +41,26 @@ def init_reservoir(N, seed=0, input_size=120):
 def create_moduled_matrix(N):
     resovoir_weight = np.zeros((N, N))
     crust_idx = 0
-    G = 0.1
-    p = 0.05
+    G = 0.5
+    p = 0.08
+    offset = 1.0
     while crust_idx != 4:
         i1 = int(crust_idx * N / 4)
         i2 = int((crust_idx + 1) * N / 4)
-        resovoir_weight[i1:i2, i1:i2] = ((G * np.random.randn(N // 4, N // 4)) + 1) * (
-            np.random.rand(N // 4, N // 4) < p
-        )
+        # resovoir_weight[i1:i2, i1:i2] = ((G * np.random.randn(N // 4, N // 4)) + offset) * (
+        #     np.random.rand(N // 4, N // 4) < p
+        # )
+        resovoir_weight[i1:i2, i1:i2] = (
+            G*(np.random.rand(N//4, N//4)-0.5) + offset
+            ) * (np.random.rand(N//4, N//4) < p)
         # print(resovoir_weight[i1:i2, i1:i2])
         crust_idx += 1
 
     # クラスター間の接続
     M = 4
-    G = 0.1
+    G = 0.5
     p = 0.01
+    offset = 1.0
     for hoge in range(M):
         i_range1 = int((hoge * N / 4) % N)
         i_range2 = int((hoge + 1) * N / 4)
@@ -65,9 +70,12 @@ def create_moduled_matrix(N):
         j_range2 = int((hoge + 2) * N / 4)
         if j_range2 > N:
             j_range2 = j_range2 % N
+        # resovoir_weight[i_range1:i_range2, j_range1:j_range2] = (
+        #     (G * np.random.randn(N // 4, N // 4)) + offset
+        # ) * (np.random.rand(N // 4, N // 4) < p)
         resovoir_weight[i_range1:i_range2, j_range1:j_range2] = (
-            (G * np.random.randn(N // 4, N // 4)) + 1
-        ) * (np.random.rand(N // 4, N // 4) < p)
+            G*(np.random.rand(N//4, N//4)-0.5) + offset
+            ) * (np.random.rand(N//4, N//4) < p)
 
         i_range1 = int(((hoge + 1) * N / 4) % N)
         i_range2 = int((hoge + 2) * N / 4)
@@ -78,13 +86,13 @@ def create_moduled_matrix(N):
         if j_range2 > N:
             j_range2 = j_range2 % N
         resovoir_weight[i_range1:i_range2, j_range1:j_range2] = (
-            (G * np.random.randn(N // 4, N // 4)) + 1
+            (G * np.random.randn(N // 4, N // 4)) + offset
         ) * (np.random.rand(N // 4, N // 4) < p)
 
     # 抑制結合の設定
-    base_mask = np.ones((N, int(N / 4)))
-    base_mask[:, N // 5 :] = -1
-    mask = np.hstack([base_mask for _ in range(4)])
+    mask = np.ones((N, N))
+    inhi_idx = np.random.choice(np.arange(N), int(N/4), replace=False)
+    mask[:, inhi_idx] = -1
     resovoir_weight = resovoir_weight * mask
     # resovoir_weight = np.zeros((N, N))#test
     # resovoir_weight[0, 1] = 1       #test
@@ -112,11 +120,11 @@ def create_random_matrix(N):
 
 
 def synapses_init(resovoir_weight, N, N_S):
-    tau_rec = np.full(N_S, 0.2, dtype=np.float32)
-    tau_inact = np.full(N_S, 0.003, dtype=np.float32)
+    tau_rec = np.full(N_S, 0.1, dtype=np.float32)
+    tau_inact = np.full(N_S, 0.03, dtype=np.float32)
     tau_faci = np.full(N_S, 0.53, dtype=np.float32)
-    U1 = np.full(N_S, 0.3, dtype=np.float32)
-    U = np.full(N_S, 0.5, dtype=np.float32)
+    U1 = np.full(N_S, 0.05, dtype=np.float32)
+    U = np.full(N_S, 0.1, dtype=np.float32)
     mask_faci = np.zeros(N_S, dtype=np.uint8)
     col_indices, row_indices = np.where(resovoir_weight.T != 0)
     for i in range(N_S):
@@ -152,9 +160,7 @@ def calc_init(resovoir_weight, N, N_S):
 def delay_init(resovoir_weight, N, N_S, mask):
     # delays = np.random.randint(100, 700, size=(N,N))
     # delays = np.full((N, N), 1000, dtype=np.int32)
-    delays = (40 + 7.5 * np.random.randn(N, N)).astype(
-        np.int32
-    )  # 平均4ms 標準偏差0.75ms
+    delays = (40 + 7.5 * np.random.rand(N, N)).astype(np.int32)  # 平均4ms 標準偏差0.75ms
     delays = delays * (mask != 0)
     delay_row = np.zeros(N_S, dtype=np.int32)
     col_indices, row_indices = np.where(resovoir_weight.T != 0)
