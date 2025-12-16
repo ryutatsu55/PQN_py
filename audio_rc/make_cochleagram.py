@@ -161,6 +161,7 @@ def preprocess_all_sph_for_words(
     train_root: str,
     out_dir: str = "coch_output",
     word_codes: list[str] | None = None,
+    allowed_speakers: list[str] | None = None,
     decimation_factor: int = 64,
     delete_wav: bool = True,
     n_jobs: int | None = None,
@@ -194,6 +195,15 @@ def preprocess_all_sph_for_words(
     # Discover all .sph files: TRAIN/(F1..F8,M1..M8)/*.sph
     pattern = os.path.join(train_root, "*", "*.sph")
     sph_files = sorted(glob.glob(pattern))
+
+    # Filter by speaker (e.g., M1-M8, F1-F8) if specified
+    if allowed_speakers is not None:
+        allowed = {s.lower() for s in allowed_speakers}
+        sph_files = [
+            p
+            for p in sph_files
+            if os.path.basename(os.path.dirname(p)).lower() in allowed
+        ]
 
     if len(sph_files) == 0:
         raise FileNotFoundError(f"No .sph files found under: {pattern}")
@@ -252,15 +262,29 @@ if __name__ == "__main__":
 
     for folder in folders:
         for code, name in configs:
-            preprocess_all_sph_for_words(
-                train_root=audio_root + folder,
-                out_dir=f"reservoir_inputs/{folder}/coch_{name}",  # 出力先フォルダ
-                word_codes=[code],  # 指定した単語コードのみ
-                decimation_factor=100,  # サンプリング時間の間引き
-                delete_wav=True,  # .wav は一時ファイルとして削除
-                n_jobs=None,  # CPU数 - 1 を自動で使用
-                build_big_tensor=True,
-                big_tensor_name=f"dataset_{name}.npz",
-            )
+            if folder == "train":
+                preprocess_all_sph_for_words(
+                    train_root=audio_root + folder,
+                    out_dir=f"reservoir_inputs/{folder}/coch_{name}",  # 出力先フォルダ
+                    word_codes=[code],  # 指定した単語コードのみ
+                    allowed_speakers=[f"m{i}" for i in range(1, 9)],
+                    decimation_factor=100,  # サンプリング時間の間引き
+                    delete_wav=True,  # .wav は一時ファイルとして削除
+                    n_jobs=None,  # CPU数 - 1 を自動で使用
+                    build_big_tensor=True,
+                    big_tensor_name=f"dataset_{name}.npz",
+                )
+            else:
+                preprocess_all_sph_for_words(
+                    train_root=audio_root + folder,
+                    out_dir=f"reservoir_inputs/{folder}/coch_{name}",  # 出力先フォルダ
+                    word_codes=[code],  # 指定した単語コードのみ
+                    allowed_speakers=[f"f{i}" for i in range(1, 9)],
+                    decimation_factor=100,  # サンプリング時間の間引き
+                    delete_wav=True,  # .wav は一時ファイルとして削除
+                    n_jobs=None,  # CPU数 - 1 を自動で使用
+                    build_big_tensor=True,
+                    big_tensor_name=f"dataset_{name}.npz",
+                )
 
     print("Done preprocessing.")
