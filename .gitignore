@@ -111,6 +111,6 @@ graphs/*
 
 RNN_analyze/reservoir_inputs
 RNN_analyze/reservoir_outputs
-RNN_analyze/figs
+RNN_analyze/data
 
 .vscode/*

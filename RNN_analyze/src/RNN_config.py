@@ -15,7 +15,8 @@ def init_reservoir(N, seed=0, input_size=120):
     # rng = np.random.default_rng(seed)
 
     input_indices = np.arange(input_size)
-    candidate_indices = np.arange(input_size, N)
+    # candidate_indices = np.arange(input_size, N)
+    candidate_indices = np.arange(N)
     if len(candidate_indices) < 60:
          raise ValueError(f"num of neuron N={N} is too small")
     output_indices = np.random.choice(candidate_indices, 60, replace=False)
@@ -160,7 +161,7 @@ def calc_init(resovoir_weight, N, N_S):
 def delay_init(resovoir_weight, N, N_S, mask):
     # delays = np.random.randint(100, 700, size=(N,N))
     # delays = np.full((N, N), 1000, dtype=np.int32)
-    delays = (40 + 7.5 * np.random.rand(N, N)).astype(np.int32)  # 平均4ms 標準偏差0.75ms
+    delays = (40 + 60 * np.random.rand(N, N)).astype(np.int32)  # 平均4ms 標準偏差0.75ms
     delays = delays * (mask != 0)
     delay_row = np.zeros(N_S, dtype=np.int32)
     col_indices, row_indices = np.where(resovoir_weight.T != 0)

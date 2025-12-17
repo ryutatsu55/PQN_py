@@ -13,9 +13,9 @@ import os
 import sys
 from pathlib import Path
 
-sys.path.append(
-    str(Path(__file__).resolve().parents[1])
-)  # HACK: 親ディレクトリをパスに追加
+# sys.path.append(
+#     str(Path(__file__).resolve().parents[1])
+# )  # HACK: 親ディレクトリをパスに追加
 from src.PQN import PQNparam
 
 
@@ -410,8 +410,8 @@ def visualize_matrix(matrix, num):
     plt.xlabel("Pre Neuron")
     plt.ylabel("Post Neuron")
     plt.tight_layout()
-    save_path = os.path.join("figs", "resovoir_weight_matrix.png")
-    plt.savefig("RNN_analyze/figs/resovoir_weight_matrix.png")
+    save_path = os.path.join("data", "resovoir_weight_matrix.png")
+    plt.savefig("RNN_analyze/data/resovoir_weight_matrix.png")
     if REC:
         save_path = os.path.join(OUTDIR, "resovoir_weight_matrix.png")
         plt.savefig(save_path)
@@ -432,8 +432,8 @@ def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, num):
     ax1.set_ylabel("v")
     ax0.set_ylabel("I")
     ax1.set_xlabel("[s]")
-    save_path = os.path.join("figs", "single_neuron.png")
-    plt.savefig("RNN_analyze/figs/single_neuron.png")
+    save_path = os.path.join("data", "single_neuron.png")
+    plt.savefig("RNN_analyze/data/single_neuron.png")
     if REC:
         save_path = os.path.join(OUTDIR, f"single_neuron.png")
         plt.savefig(save_path)
@@ -454,8 +454,8 @@ def plot_raster(dt, tmax, rasters, N, num):
     plt.ylim(0, N)
     plt.title("Raster Plot")
     plt.tight_layout()
-    save_path = os.path.join("figs", "raster.png")
-    plt.savefig("RNN_analyze/figs/raster.png")
+    save_path = os.path.join("data", "raster.png")
+    plt.savefig("RNN_analyze/data/raster.png")
     if REC:
         save_path = os.path.join(OUTDIR, "raster.png")
         plt.savefig(save_path)

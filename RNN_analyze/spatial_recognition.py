@@ -11,8 +11,8 @@ import matplotlib.pyplot as plt
 import os
 from pathlib import Path
 
-import PQN_RNN_onGPU
-import RNN_config
+import src.PQN_RNN_onGPU as PQN_RNN_onGPU
+import src.RNN_config as RNN_config
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -323,23 +323,63 @@ def pad_and_integrate(x, T_max):
 # ================================
 # 2. 線形 readout の学習 (ridge regression)
 # ================================
-def train_readout(X: np.ndarray, y: np.ndarray, lambda_reg: float = 1e-2) -> np.ndarray:
+def train_readout(X: np.ndarray, y: np.ndarray, lambda_reg: float = 1e-2, batch_size: int = 5000) -> np.ndarray:
+    """
+    元のコードの機能を維持しつつ、メモリを節約するためにデータを小分けにして計算する関数
+    """
     num_samples, D = X.shape
-    classes = np.unique(y)
-    C = len(classes)
+    
+    # yの形状を見て、クラス分類（ラベル）か回帰（ターゲット）かを判断
+    if y.ndim == 1:
+        # 分類タスク（元のコードと同じ処理）
+        classes = np.unique(y)
+        C = len(classes)
+        is_classification = True
+    else:
+        # 回帰タスク（タイマータスクなどですでにYができている場合への対応）
+        C = y.shape[1]
+        is_classification = False
 
-    Y = np.zeros((num_samples, C), dtype=np.float32)
-    for i, label in enumerate(y):
-        Y[i, label] = 1.0
+    # 1. 巨大な K (NxN) は作らず、小さな XtX (DxD) と XtY (DxC) を累積する箱を用意
+    #    float64 にすることで精度落ち（結果が違う現象）を防ぎます
+    XtX = np.zeros((D, D), dtype=np.float64)
+    XtY = np.zeros((D, C), dtype=np.float64)
+    
+    # 2. データをバッチサイズ（例: 5000行）ごとに区切って処理
+    print(f"Training readout in batches (N={num_samples}, Batch={batch_size})...")
+    
+    for i in range(0, num_samples, batch_size):
+        end = min(i + batch_size, num_samples)
+        
+        # 必要な分だけメモリに載せる
+        X_batch = X[i:end].astype(np.float64)
+        y_batch_part = y[i:end]
+        
+        # ラベル(1D)なら、このバッチの中だけでOne-hot行列(2D)を作る
+        # (巨大なY行列を一度に作らないのでメモリに優しい)
+        if is_classification:
+            Y_batch = np.zeros((len(y_batch_part), C), dtype=np.float64)
+            for j, label in enumerate(y_batch_part):
+                Y_batch[j, label] = 1.0
+        else:
+            Y_batch = y_batch_part.astype(np.float64)
+        
+        # 累積加算 (X^T X と X^T Y)
+        XtX += X_batch.T @ X_batch
+        XtY += X_batch.T @ Y_batch
+        
+        # 使い終わった変数を削除してメモリ掃除
+        del X_batch, y_batch_part, Y_batch
+        # gc.collect() # 動作が重すぎる場合はコメントアウトでも可
 
-    # K = X X^T : (num_samples, num_samples)
-    K = X @ X.T
-    I = np.eye(num_samples, dtype=np.float32)
-
-    alpha = np.linalg.inv(K + lambda_reg * I) @ Y  # (num_samples, C)
-    W_out = X.T @ alpha  # (D, C)
-
-    return W_out
+    # 3. 最後にまとめて計算 (D x D なので一瞬で終わります)
+    #    数学的に元のコード (inv(K + lambda I) @ Y) と等価です
+    I = np.eye(D, dtype=np.float64)
+    
+    # inv ではなく solve を使うことで、さらに精度と安定性を高めています
+    W_out = np.linalg.solve(XtX + lambda_reg * I, XtY)
+    
+    return W_out.astype(np.float32)
 
 
 # ================================
@@ -451,8 +491,8 @@ def main_train(num_of_cells: int, seed: int) -> None:
     folder = datetime.now().strftime("%Y%m%d")
     timestamp = datetime.now().strftime("%H%M")
     filename = "confusion_matrix_.png"
-    os.makedirs(f"RNN_analyze/figs/{folder}/{timestamp}", exist_ok=True)
-    plt.savefig(f"RNN_analyze/figs/{folder}/{timestamp}/{filename}")
+    os.makedirs(f"RNN_analyze/data/{folder}/{timestamp}", exist_ok=True)
+    plt.savefig(f"RNN_analyze/data/{folder}/{timestamp}/{filename}")
     plt.close()
     print(f"Saved {filename}")
 
