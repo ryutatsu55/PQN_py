@@ -6,3 +6,10 @@
 {"mode": "snn", "seed": 1, "num_cells": 240, "acc_train": 1.0, "acc_test": 1.0}
 {"mode": "snn", "seed": 1, "num_cells": 240, "acc_train": 0.99, "acc_test": 0.99}
 {"mode": "snn", "seed": 1, "num_cells": 240, "acc_train": 0.95, "acc_test": 0.53}
+{"mode": "snn", "seed": 100, "num_cells": 600, "acc_train": 0.95, "acc_test": 0.91}
+{"mode": "snn", "seed": 100, "num_cells": 240, "acc_train": 0.85, "acc_test": 0.69}
+{"mode": "snn", "seed": 100, "num_cells": 600, "acc_train": 0.85, "acc_test": 0.84}
+{"mode": "snn", "seed": 100, "num_cells": 600, "acc_train": 0.84, "acc_test": 0.85}
+{"mode": "snn", "seed": 100, "num_cells": 600, "acc_train": 0.96, "acc_test": 0.96}
+{"mode": "snn", "seed": 100, "num_cells": 600, "acc_train": 0.95, "acc_test": 0.84}
+{"mode": "snn", "seed": 100, "num_cells": 240, "acc_train": 0.97, "acc_test": 0.96}

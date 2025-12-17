@@ -59,9 +59,7 @@ def load_dataset_split(
     # print(sample_coch.shape)
     # If linear mode, we do not initialize or use the reservoir
     if args.mode != "linear":
-        reservoir_state = RNN_config.init_reservoir(
-        N=num_of_cells, seed=seed, input_size=input_size
-    )
+        reservoir_state = RNN_config.init_reservoir(seed=seed, input_size=input_size)
     else:
         reservoir_state = None
 
@@ -321,7 +319,7 @@ def delay_answer(y, T_max, delay):
     C = 3
     Y = np.zeros((T_max,C), dtype=np.float32)
     delay_steps = int(delay / 0.0001)  # assuming dt=0.0001
-    Y[delay_steps:delay_steps+10,y] = 0.8
+    Y[delay_steps:delay_steps+1000,y] = 0.8
     return Y
 
 # ================================
@@ -395,8 +393,23 @@ def evaluate(W_out: np.ndarray, X: np.ndarray, y: np.ndarray) -> float:
     # print(y.shape)
     Y = Y.reshape(-1)
     y = y.reshape(-1)    
+    # 【追加】分散が0（すべての値が同じ）なら、相関は計算できないので 0 を返す
+    if np.std(Y) == 0 or np.std(y) == 0:
+        return 0.0
+
+    # サイズ不一致チェック（念のため）
+    if Y.shape[0] != y.shape[0]:
+        print(f"Error: Shape mismatch in evaluate. Pred: {Y.shape}, True: {y.shape}")
+        return 0.0
+
+    # 正常なら計算
     corr_matrix = np.corrcoef(Y, y)
-    r = corr_matrix[0,1]
+    
+    # NaNチェック（念のため）
+    if np.isnan(corr_matrix[0, 1]):
+        return 0.0
+        
+    r = corr_matrix[0, 1]
     r2 = r ** 2
     return r2
 
@@ -412,19 +425,22 @@ def main_train(num_of_cells: int, seed: int) -> None:
     X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(num_of_cells, seed)
     print("Train shape:", X_train.shape)
     print("Test  shape:", X_test.shape)
-    T_max = X_train.shape[0]
     del X_test_paths
 
     num_trials = len(y_train)
     total_rows = X_train.shape[0]
     steps_per_trial = total_rows // num_trials
+    T_max = int(steps_per_trial * 0.0001)
 
     print("Training readout...")
-    t = np.zeros(10)
-    r_train = np.zeros(10)
-    r_test = np.zeros(10)
-    for i in tqdm(np.arange(10), desc="short- term memory"):
-        delay = 0.1 * i
+    print()
+    duration = 0.01
+    steps = int(T_max // duration)
+    t = np.zeros(steps)
+    r_train = np.zeros(steps)
+    r_test = np.zeros(steps)
+    for i in tqdm(np.arange(steps), desc="short term memory"):
+        delay = duration * i
         Y_train_delayed = np.vstack([delay_answer(y, steps_per_trial, delay) for y in y_train])
         Y_test_delayed = np.vstack([delay_answer(y, steps_per_trial, delay) for y in y_test])
         W_out = train_readout(X_train, Y_train_delayed, lambda_reg=1e-2)
@@ -434,7 +450,7 @@ def main_train(num_of_cells: int, seed: int) -> None:
         r_test[i] = evaluate(W_out, X_test, Y_test_delayed)
         del Y_train_delayed
         del Y_test_delayed
-        if i != 9:
+        if i != steps - 1:
             del W_out
         gc.collect()
 
@@ -455,7 +471,7 @@ def main_train(num_of_cells: int, seed: int) -> None:
     plt.savefig(f"RNN_analyze/data/{folder}/{timestamp}/{filename}")
     plt.close()
     print(f"Saved {filename}")
-    data = np.hstack(t, r_train, r_test)
+    data = np.column_stack([t, r_train, r_test])
     filename = "short-term-memory.npy"
     np.save(f"RNN_analyze/data/{folder}/{timestamp}/{filename}", data)
 

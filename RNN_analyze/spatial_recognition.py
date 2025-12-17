@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 
 import os
 from pathlib import Path
+import shutil
 
 import src.PQN_RNN_onGPU as PQN_RNN_onGPU
 import src.RNN_config as RNN_config
@@ -58,15 +59,18 @@ def load_dataset_split(
     # print(sample_coch.shape)
     # If linear mode, we do not initialize or use the reservoir
     if args.mode != "linear":
-        reservoir_state = RNN_config.init_reservoir(
-        N=num_of_cells, seed=seed, input_size=input_size
-    )
+        reservoir_state = RNN_config.init_reservoir(seed=seed, input_size=input_size)
     else:
         reservoir_state = None
 
     # ----- TRAIN -----
     if args.mode == "snn":
         # TOP
+        
+        output_dir = "RNN_analyze/reservoir_outputs/train/top"
+        if os.path.exists(output_dir):
+            shutil.rmtree(output_dir)
+        os.makedirs(output_dir, exist_ok=True)
         path_list = glob.glob("RNN_analyze/reservoir_inputs/train/top/*.npy")
         total_files = len(path_list)
         for i, path in enumerate(tqdm(path_list, desc="TRAIN TOP")):
@@ -83,7 +87,15 @@ def load_dataset_split(
             X_train.append(feat)
             y_train.append(0)
 
+            filename = os.path.basename(path)
+            save_path = os.path.join(output_dir, filename)
+            np.save(save_path, feat)
+
         # MIDDLE
+        output_dir = "RNN_analyze/reservoir_outputs/train/middle"
+        if os.path.exists(output_dir):
+            shutil.rmtree(output_dir)
+        os.makedirs(output_dir, exist_ok=True)
         path_list = glob.glob("RNN_analyze/reservoir_inputs/train/middle/*.npy")
         total_files = len(path_list)
         for i, path in enumerate(tqdm(path_list, desc="TRAIN MIDDLE")):
@@ -100,7 +112,15 @@ def load_dataset_split(
             X_train.append(feat)
             y_train.append(1)
 
+            filename = os.path.basename(path)
+            save_path = os.path.join(output_dir, filename)
+            np.save(save_path, feat)
+
         # BOTTOM
+        output_dir = "RNN_analyze/reservoir_outputs/train/bottom"
+        if os.path.exists(output_dir):
+            shutil.rmtree(output_dir)
+        os.makedirs(output_dir, exist_ok=True)
         path_list = glob.glob("RNN_analyze/reservoir_inputs/train/bottom/*.npy")
         total_files = len(path_list)
         for i, path in enumerate(tqdm(path_list, desc="TRAIN BOTTOM")):
@@ -116,6 +136,11 @@ def load_dataset_split(
             )
             X_train.append(feat)
             y_train.append(2)
+
+            filename = os.path.basename(path)
+            save_path = os.path.join(output_dir, filename)
+            np.save(save_path, feat)
+
     elif args.mode == "feature":
         # TOP features
         for path in tqdm(
@@ -174,6 +199,10 @@ def load_dataset_split(
     # ----- TEST -----
     if args.mode == "snn":
         # TOP
+        output_dir = "RNN_analyze/reservoir_outputs/test/top"
+        if os.path.exists(output_dir):
+            shutil.rmtree(output_dir)
+        os.makedirs(output_dir, exist_ok=True)
         path_list = glob.glob("RNN_analyze/reservoir_inputs/test/top/*.npy")
         total_files = len(path_list)
         for i, path in enumerate(tqdm(path_list, desc="TEST TOP")):
@@ -190,8 +219,16 @@ def load_dataset_split(
             X_test.append(feat)
             y_test.append(0)
             X_test_paths.append(path)
+            
+            filename = os.path.basename(path)
+            save_path = os.path.join(output_dir, filename)
+            np.save(save_path, feat)
 
         # MIDDLE
+        output_dir = "RNN_analyze/reservoir_outputs/test/middle"
+        if os.path.exists(output_dir):
+            shutil.rmtree(output_dir)
+        os.makedirs(output_dir, exist_ok=True)
         path_list = glob.glob("RNN_analyze/reservoir_inputs/test/middle/*.npy")
         total_files = len(path_list)
         for i, path in enumerate(tqdm(path_list, desc="TEST MIDDLE")):
@@ -208,8 +245,16 @@ def load_dataset_split(
             X_test.append(feat)
             y_test.append(1)
             X_test_paths.append(path)
+            
+            filename = os.path.basename(path)
+            save_path = os.path.join(output_dir, filename)
+            np.save(save_path, feat)
 
         # BOTTOM
+        output_dir = "RNN_analyze/reservoir_outputs/test/bottom"
+        if os.path.exists(output_dir):
+            shutil.rmtree(output_dir)
+        os.makedirs(output_dir, exist_ok=True)
         path_list = glob.glob("RNN_analyze/reservoir_inputs/test/bottom/*.npy")
         total_files = len(path_list)
         for i, path in enumerate(tqdm(path_list, desc="TEST BOTTOM")):
@@ -226,6 +271,11 @@ def load_dataset_split(
             X_test.append(feat)
             y_test.append(2)
             X_test_paths.append(path)
+            
+            filename = os.path.basename(path)
+            save_path = os.path.join(output_dir, filename)
+            np.save(save_path, feat)
+
     elif args.mode == "feature":
         # TOP features
         for path in tqdm(

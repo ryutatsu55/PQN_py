@@ -11,7 +11,7 @@ else:
     print(f"ディレクトリ {target_dir} は存在しません。")
 
 dt = 0.01  # シミュレーションのタイムステップ (例えば10ms)
-N = 600
+N = 240
 in_neurons = int(N//6)
 duration_stim = int(0.1 / dt) # 100ms
 duration_interval = int(1.0 / dt) # 2.5s

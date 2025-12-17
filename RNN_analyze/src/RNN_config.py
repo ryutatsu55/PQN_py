@@ -2,7 +2,7 @@ import numpy as np
 import random
 
 
-def init_reservoir(N, seed=0, input_size=120):
+def init_reservoir(N=240, seed=0, input_size=120):
     random.seed(seed)
     np.random.seed(seed)
     resovoir_origin, mask, type = create_moduled_matrix(N)
@@ -18,7 +18,7 @@ def init_reservoir(N, seed=0, input_size=120):
     # candidate_indices = np.arange(input_size, N)
     candidate_indices = np.arange(N)
     if len(candidate_indices) < 60:
-         raise ValueError(f"num of neuron N={N} is too small")
+        raise ValueError(f"num of neuron N={N} is too small")
     output_indices = np.random.choice(candidate_indices, 60, replace=False)
     return {
         "reservoir_weight": resovoir_origin,
