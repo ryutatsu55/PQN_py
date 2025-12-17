@@ -13,3 +13,5 @@
 {"mode": "snn", "seed": 100, "num_cells": 600, "acc_train": 0.96, "acc_test": 0.96}
 {"mode": "snn", "seed": 100, "num_cells": 600, "acc_train": 0.95, "acc_test": 0.84}
 {"mode": "snn", "seed": 100, "num_cells": 240, "acc_train": 0.97, "acc_test": 0.96}
+{"mode": "snn", "seed": 42, "num_cells": 240, "acc_train": 0.99, "acc_test": 0.97}
+{"mode": "snn", "seed": 42, "num_cells": 240, "acc_train": 0.99, "acc_test": 0.97}

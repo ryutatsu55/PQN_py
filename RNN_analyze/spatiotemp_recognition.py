@@ -13,7 +13,7 @@ import os
 from pathlib import Path
 
 import src.PQN_RNN_onGPU as PQN_RNN_onGPU
-import src.RNN_config as RNN_config
+import RNN_config
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

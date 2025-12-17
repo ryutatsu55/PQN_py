@@ -2,57 +2,55 @@ import numpy as np
 import random
 import os
 import shutil
+import RNN_config
 
-target_dir = "RNN_analyze/reservoir_inputs"
-if os.path.exists(target_dir):
-    shutil.rmtree(target_dir)
-    print(f"ディレクトリ {target_dir} を削除しました。")
-else:
-    print(f"ディレクトリ {target_dir} は存在しません。")
+cfg = RNN_config.Config
 
-dt = 0.01  # シミュレーションのタイムステップ (例えば10ms)
-N = 240
-in_neurons = int(N//6)
-duration_stim = int(0.1 / dt) # 100ms
-duration_interval = int(1.0 / dt) # 2.5s
-Ntrain = 100
-Ntest = 100
-dirs_to_create = [
-    "RNN_analyze/reservoir_inputs/train/top",
-    "RNN_analyze/reservoir_inputs/train/middle",
-    "RNN_analyze/reservoir_inputs/train/bottom",
-    "RNN_analyze/reservoir_inputs/test/top",
-    "RNN_analyze/reservoir_inputs/test/middle",
-    "RNN_analyze/reservoir_inputs/test/bottom"
-]
-for directory in dirs_to_create:
-    os.makedirs(directory, exist_ok=True)
+def make_data():
+    print(f"Generating data with N={cfg.N}, Strength={cfg.INPUT_STRENGTH}...")
+    
+    target_dir = cfg.INPUT_DIR
+    if os.path.exists(target_dir):
+        shutil.rmtree(target_dir)
+        print(f"ディレクトリ {target_dir} を削除しました。")
+    
+    # Configから計算
+    dt = cfg.INPUT_DT
+    N = cfg.N
+    hoge = int(N//6)
+    in_neurons = [np.arrange(0, hoge), np.arange(hoge, 2*hoge), np.arange(2*hoge, 3*hoge)]  # 入力ニューロン群のインデックス
+    
+    stim_steps = int(cfg.DURATION_STIM / dt)
+    entire_steps = int(cfg.DURATION_INTERVAL / dt)
+    
+    # フォルダ作成
+    categories = ["top", "middle", "bottom"]
+    phases = ["train", "test"]
+    for phase in phases:
+        for cat in categories:
+            os.makedirs(os.path.join(cfg.INPUT_DIR, phase, cat), exist_ok=True)
 
-for i in range(Ntrain):
-    input = np.zeros((duration_interval, 3*in_neurons), dtype=float)
-    target = np.random.randint(0,3)
-    input[:duration_stim, target*in_neurons:(target+1)*in_neurons] = 0.8
-    # print(input.shape)
-    if target == 0:
-        np.save(f"RNN_analyze/reservoir_inputs/train/top/{i}.npy", input)
-    elif target == 1:
-        np.save(f"RNN_analyze/reservoir_inputs/train/middle/{i}.npy", input)
-    elif target == 2:
-        np.save(f"RNN_analyze/reservoir_inputs/train/bottom/{i}.npy", input)
+    # データ生成ループ (Train)
+    for i in range(cfg.N_TRAIN):
+        input_data = np.zeros((entire_steps, int(N//2)), dtype=float)
+        target = np.random.randint(0, 3)
+        
+        # Configの強度を使用
+        input_data[:stim_steps, in_neurons[target]] = cfg.INPUT_STRENGTH
+        
+        cat = categories[target]
+        save_path = os.path.join(cfg.INPUT_DIR, "train", cat, f"{i}.npy")
+        np.save(save_path, input_data)
 
+    # データ生成ループ (Test)
+    for i in range(cfg.N_TEST):
+        input_data = np.zeros((entire_steps, 3 * in_neurons), dtype=float)
+        target = np.random.randint(0, 3)
+        input_data[:stim_steps, in_neurons[target]] = cfg.INPUT_STRENGTH
+        
+        cat = categories[target]
+        save_path = os.path.join(cfg.INPUT_DIR, "test", cat, f"{i}.npy")
+        np.save(save_path, input_data)
 
-for i in range(Ntest):
-    input = np.zeros((duration_interval, 3*in_neurons), dtype=float)
-    target = np.random.randint(0,3)
-    input[:duration_stim, target*in_neurons:(target+1)*in_neurons] = 0.8
-    if target == 0:
-        np.save(f"RNN_analyze/reservoir_inputs/test/top/{i}.npy", input)
-    elif target == 1:
-        np.save(f"RNN_analyze/reservoir_inputs/test/middle/{i}.npy", input)
-    elif target == 2:
-        np.save(f"RNN_analyze/reservoir_inputs/test/bottom/{i}.npy", input)
-
-
-# 入力スケジュールの生成例
-# inputs: (Time, Input_Dimension=3)
-# targets: (Time, Output_Dimension=3)
+if __name__ == "__main__":
+    make_data()

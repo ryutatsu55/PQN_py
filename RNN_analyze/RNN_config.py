@@ -1,25 +1,53 @@
 import numpy as np
 import random
+import os
 
+class Config:
+    # --- 基本設定 ---
+    SEED = 42           # ベースとなるシード値
+    N = 240             # ニューロン総数
+    DT = 0.0001
+    INPUT_DT = 0.01           # タイムステップ [s] (シミュレーション用)
+    
+    # --- 入力データ生成設定 ---
+    DURATION_STIM = 0.1           # 刺激時間 [s]
+    DURATION_INTERVAL = 2.5       # 1試行の長さ [s] (spatial task)
+    INPUT_STRENGTH = 0.8          # 入力強度
+    
+    N_TRAIN = 100                 # 学習データ数
+    N_TEST = 100                  # テストデータ数
+    
+    # --- ディレクトリパス設定 ---
+    BASE_DIR = "RNN_analyze"
+    INPUT_DIR = os.path.join(BASE_DIR, "reservoir_inputs")
+    OUTPUT_DIR = os.path.join(BASE_DIR, "reservoir_outputs")
+    FIG_DIR = os.path.join(BASE_DIR, "figs")
+    DATA_DIR = os.path.join(BASE_DIR, "data")
+    
+    # --- リザバー結合パラメータ ---
+    RESERVOIR_CONN_PROB = 0.02    # 結合強度係数 (元のコードの * 0.02)
+    READOUT_NODES = 60            # 読み出し層のノード数
 
-def init_reservoir(N=240, seed=0, input_size=120):
+def init_reservoir():
+    N = Config.N
+    seed = Config.SEED
+    input_size = N // 2
     random.seed(seed)
     np.random.seed(seed)
     resovoir_origin, mask, type = create_moduled_matrix(N)
-    resovoir_weight = np.copy(resovoir_origin) * 0.02
+    resovoir_weight = np.copy(resovoir_origin) * Config.RESERVOIR_CONN_PROB
     N_S = np.count_nonzero(resovoir_weight)
     tau_rec_h, tau_inact_h, tau_faci_h, U1_h, U_h, mask_faci_h = synapses_init(resovoir_weight, N, N_S)
     neuron_from_h, calc_matrix_h, neuron_to_h = calc_init(resovoir_weight, N, N_S)
     delayed_row_h = delay_init(resovoir_weight, N, N_S, mask)
 
-    # rng = np.random.default_rng(seed)
-
     input_indices = np.arange(input_size)
     # candidate_indices = np.arange(input_size, N)
     candidate_indices = np.arange(N)
-    if len(candidate_indices) < 60:
+    readout_num = Config.READOUT_NODES
+    if len(candidate_indices) < readout_num:
         raise ValueError(f"num of neuron N={N} is too small")
-    output_indices = np.random.choice(candidate_indices, 60, replace=False)
+    output_indices = np.random.choice(candidate_indices, readout_num, replace=False)
     return {
         "reservoir_weight": resovoir_origin,
         "mask": mask,

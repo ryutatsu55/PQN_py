@@ -4,10 +4,9 @@ import glob
 import argparse
 from datetime import datetime
 from collections import Counter
-
+import gc
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-
 import os
 from pathlib import Path
 import shutil
@@ -15,63 +14,69 @@ import shutil
 import src.PQN_RNN_onGPU as PQN_RNN_onGPU
 import RNN_config
 
+cfg = RNN_config.Config
+
 parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--classifier",
+    choices=["space", "delayed_space", "both"],
+    default="both",
+    help="space: classify with space, delayed_space: classify with delayed space",
+)
 parser.add_argument(
     "--mode",
     choices=["snn", "feature", "linear"],
     default="feature",
     help="snn: run SNN to compute features, feature: load saved feature .npy, linear: use cochleagram directly",
 )
-parser.add_argument(
-    "--cells",
-    "-c",
-    type=int,
-    default=240,
-    help="number of reservoir cells (default: 100)",
-)
-parser.add_argument(
-    "--seed",
-    type=int,
-    default=123,
-    help="random seed (default: 123)",
-)
 args = parser.parse_args()
 
+
+def main(num_of_cells: int = cfg.N, seed: int = cfg.SEED) -> None:
+    print(f"Mode: {args.mode}")
+    print(f"Number of reservoir cells: {num_of_cells}")
+    print(f"Random seed: {seed}")
+    print("Loading dataset...")
+    if args.classifier == "space":
+        spatial_recognition(mode = args.mode)
+    elif args.classifier == "delayed_space":
+        delayed_space(mode = args.mode)
+    elif args.classifier == "both":
+        spatial_recognition(mode = args.mode)
+        delayed_space(mode = args.mode if args.mode == "linear" else "feature")
 
 # ================================
 # 1. データ読み込み関数
 # ================================
 def load_dataset_split(
-    num_of_cells: int, seed: int
+    mode: str, num_of_cells: int, seed: int
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[str]]:
     X_train, y_train = [], []
     X_test, y_test = [], []
     X_test_paths = []
 
     # determine input dimension M (number of cochleagram channels)
-    sample_paths = glob.glob("RNN_analyze/reservoir_inputs/train/top/*.npy")
-    if len(sample_paths) == 0:
-        sample_paths = glob.glob("RNN_analyze/reservoir_inputs/train/top/*.npy")
+    train_top_dir = os.path.join(cfg.INPUT_DIR, "train", "top", "*.npy")
+    sample_paths = glob.glob(train_top_dir)
     if len(sample_paths) == 0:
         raise RuntimeError("No cochleagram .npy files found in train directories.")
-    sample_coch = np.load(sample_paths[0])
-    input_size = sample_coch.shape[1]
-    # print(sample_coch.shape)
+    sample_data = np.load(sample_paths[0])
+    input_size = sample_data.shape[1]
+    # print(sample_data.shape)
     # If linear mode, we do not initialize or use the reservoir
-    if args.mode != "linear":
-        reservoir_state = RNN_config.init_reservoir(seed=seed, input_size=input_size)
+    if mode != "linear":
+        reservoir_state = RNN_config.init_reservoir()
     else:
         reservoir_state = None
 
     # ----- TRAIN -----
-    if args.mode == "snn":
+    if mode == "snn":
+        if os.path.exists(cfg.OUTPUT_DIR):
+            shutil.rmtree(cfg.OUTPUT_DIR)
         # TOP
-        
-        output_dir = "RNN_analyze/reservoir_outputs/train/top"
-        if os.path.exists(output_dir):
-            shutil.rmtree(output_dir)
+        output_dir = os.path.join(cfg.OUTPUT_DIR, "train/top")
         os.makedirs(output_dir, exist_ok=True)
-        path_list = glob.glob("RNN_analyze/reservoir_inputs/train/top/*.npy")
+        path_list = glob.glob(os.path.join(cfg.INPUT_DIR, "train", "top", "*.npy"))
         total_files = len(path_list)
         for i, path in enumerate(tqdm(path_list, desc="TRAIN TOP")):
             is_last_loop = (i == total_files - 1)
@@ -86,17 +91,15 @@ def load_dataset_split(
             )
             X_train.append(feat)
             y_train.append(0)
-
+            
             filename = os.path.basename(path)
             save_path = os.path.join(output_dir, filename)
             np.save(save_path, feat)
 
         # MIDDLE
-        output_dir = "RNN_analyze/reservoir_outputs/train/middle"
-        if os.path.exists(output_dir):
-            shutil.rmtree(output_dir)
+        output_dir = os.path.join(cfg.OUTPUT_DIR, "train/middle")
         os.makedirs(output_dir, exist_ok=True)
-        path_list = glob.glob("RNN_analyze/reservoir_inputs/train/middle/*.npy")
+        path_list = glob.glob(os.path.join(cfg.INPUT_DIR, "train", "middle", "*.npy"))
         total_files = len(path_list)
         for i, path in enumerate(tqdm(path_list, desc="TRAIN MIDDLE")):
             is_last_loop = (i == total_files - 1)
@@ -111,17 +114,15 @@ def load_dataset_split(
             )
             X_train.append(feat)
             y_train.append(1)
-
+            
             filename = os.path.basename(path)
             save_path = os.path.join(output_dir, filename)
             np.save(save_path, feat)
 
         # BOTTOM
-        output_dir = "RNN_analyze/reservoir_outputs/train/bottom"
-        if os.path.exists(output_dir):
-            shutil.rmtree(output_dir)
+        output_dir = os.path.join(cfg.OUTPUT_DIR, "train/bottom")
         os.makedirs(output_dir, exist_ok=True)
-        path_list = glob.glob("RNN_analyze/reservoir_inputs/train/bottom/*.npy")
+        path_list = glob.glob(os.path.join(cfg.INPUT_DIR, "train", "bottom", "*.npy"))
         total_files = len(path_list)
         for i, path in enumerate(tqdm(path_list, desc="TRAIN BOTTOM")):
             is_last_loop = (i == total_files - 1)
@@ -136,15 +137,14 @@ def load_dataset_split(
             )
             X_train.append(feat)
             y_train.append(2)
-
+            
             filename = os.path.basename(path)
             save_path = os.path.join(output_dir, filename)
             np.save(save_path, feat)
-
-    elif args.mode == "feature":
+    elif mode == "feature":
         # TOP features
         for path in tqdm(
-            glob.glob("RNN_analyze/reservoir_outputs/train/top/*.npy"),
+            glob.glob(os.path.join(cfg.OUTPUT_DIR, "train", "top", "*.npy")),
             desc="TRAIN TOP",
         ):
             feat = np.load(path)
@@ -153,7 +153,7 @@ def load_dataset_split(
 
         # MIDDLE features
         for path in tqdm(
-            glob.glob("RNN_analyze/reservoir_outputs/train/middle/*.npy"),
+            glob.glob(os.path.join(cfg.OUTPUT_DIR, "train", "middle", "*.npy")),
             desc="TRAIN MIDDLE",
         ):
             feat = np.load(path)
@@ -162,16 +162,16 @@ def load_dataset_split(
 
         # BOTTOM features
         for path in tqdm(
-            glob.glob("RNN_analyze/reservoir_outputs/train/bottom/*.npy"),
+            glob.glob(os.path.join(cfg.OUTPUT_DIR, "train", "bottom", "*.npy")),
             desc="TRAIN BOTTOM",
         ):
             feat = np.load(path)
             X_train.append(feat)
             y_train.append(2)
-    elif args.mode == "linear":
+    elif mode == "linear":
         # TOP
         for path in tqdm(
-            glob.glob("RNN_analyze/reservoir_inputs/train/top/*.npy"),
+            glob.glob(os.path.join(cfg.INPUT_DIR, "train", "top", "*.npy")),
             desc="TRAIN TOP (linear)",
         ):
             input = np.load(path)
@@ -180,7 +180,7 @@ def load_dataset_split(
 
         # MIDDLE
         for path in tqdm(
-            glob.glob("RNN_analyze/reservoir_inputs/train/middle/*.npy"),
+            glob.glob(os.path.join(cfg.INPUT_DIR, "train", "middle", "*.npy")),
             desc="TRAIN MIDDLE (linear)",
         ):
             input = np.load(path)
@@ -189,7 +189,7 @@ def load_dataset_split(
 
         # BOTTOM
         for path in tqdm(
-            glob.glob("RNN_analyze/reservoir_inputs/train/bottom/*.npy"),
+            glob.glob(os.path.join(cfg.INPUT_DIR, "train", "bottom", "*.npy")),
             desc="TRAIN BOTTOM (linear)",
         ):
             input = np.load(path)
@@ -197,13 +197,11 @@ def load_dataset_split(
             y_train.append(2)
 
     # ----- TEST -----
-    if args.mode == "snn":
+    if mode == "snn":
         # TOP
-        output_dir = "RNN_analyze/reservoir_outputs/test/top"
-        if os.path.exists(output_dir):
-            shutil.rmtree(output_dir)
+        output_dir = os.path.join(cfg.OUTPUT_DIR, "test/top")
         os.makedirs(output_dir, exist_ok=True)
-        path_list = glob.glob("RNN_analyze/reservoir_inputs/test/top/*.npy")
+        path_list = glob.glob(os.path.join(cfg.INPUT_DIR, "test", "top", "*.npy"))
         total_files = len(path_list)
         for i, path in enumerate(tqdm(path_list, desc="TEST TOP")):
             is_last_loop = (i == total_files - 1)
@@ -225,11 +223,9 @@ def load_dataset_split(
             np.save(save_path, feat)
 
         # MIDDLE
-        output_dir = "RNN_analyze/reservoir_outputs/test/middle"
-        if os.path.exists(output_dir):
-            shutil.rmtree(output_dir)
+        output_dir = os.path.join(cfg.OUTPUT_DIR, "test/middle")
         os.makedirs(output_dir, exist_ok=True)
-        path_list = glob.glob("RNN_analyze/reservoir_inputs/test/middle/*.npy")
+        path_list = glob.glob(os.path.join(cfg.INPUT_DIR, "test", "middle", "*.npy"))
         total_files = len(path_list)
         for i, path in enumerate(tqdm(path_list, desc="TEST MIDDLE")):
             is_last_loop = (i == total_files - 1)
@@ -251,11 +247,9 @@ def load_dataset_split(
             np.save(save_path, feat)
 
         # BOTTOM
-        output_dir = "RNN_analyze/reservoir_outputs/test/bottom"
-        if os.path.exists(output_dir):
-            shutil.rmtree(output_dir)
+        output_dir = os.path.join(cfg.OUTPUT_DIR, "test/bottom")
         os.makedirs(output_dir, exist_ok=True)
-        path_list = glob.glob("RNN_analyze/reservoir_inputs/test/bottom/*.npy")
+        path_list = glob.glob(os.path.join(cfg.INPUT_DIR, "test", "bottom", "*.npy"))
         total_files = len(path_list)
         for i, path in enumerate(tqdm(path_list, desc="TEST BOTTOM")):
             is_last_loop = (i == total_files - 1)
@@ -275,11 +269,10 @@ def load_dataset_split(
             filename = os.path.basename(path)
             save_path = os.path.join(output_dir, filename)
             np.save(save_path, feat)
-
-    elif args.mode == "feature":
+    elif mode == "feature":
         # TOP features
         for path in tqdm(
-            glob.glob("RNN_analyze/reservoir_outputs/test/top/*.npy"),
+            glob.glob(os.path.join(cfg.OUTPUT_DIR, "test", "top", "*.npy")),
             desc="TEST TOP",
         ):
             feat = np.load(path)
@@ -288,7 +281,7 @@ def load_dataset_split(
             X_test_paths.append(path)
         # MIDDLE features
         for path in tqdm(
-            glob.glob("RNN_analyze/reservoir_outputs/test/middle/*.npy"),
+            glob.glob(os.path.join(cfg.OUTPUT_DIR, "test", "middle", "*.npy")),
             desc="TEST MIDDLE",
         ):
             feat = np.load(path)
@@ -297,17 +290,17 @@ def load_dataset_split(
             X_test_paths.append(path)
         # BOTTOM features
         for path in tqdm(
-            glob.glob("RNN_analyze/reservoir_outputs/test/bottom/*.npy"),
+            glob.glob(os.path.join(cfg.OUTPUT_DIR, "test", "bottom", "*.npy")),
             desc="TEST BOTTOM",
         ):
             feat = np.load(path)
             X_test.append(feat)
             y_test.append(2)
             X_test_paths.append(path)
-    elif args.mode == "linear":
+    elif mode == "linear":
         # TOP
         for path in tqdm(
-            glob.glob("RNN_analyze/reservoir_inputs/test/top/*.npy"),
+            glob.glob(os.path.join(cfg.INPUT_DIR, "test", "top", "*.npy")),
             desc="TEST TOP (linear)",
         ):
             input = np.load(path)
@@ -317,7 +310,7 @@ def load_dataset_split(
 
         # MIDLE
         for path in tqdm(
-            glob.glob("RNN_analyze/reservoir_inputs/test/middle/*.npy"),
+            glob.glob(os.path.join(cfg.INPUT_DIR, "test", "middle", "*.npy")),
             desc="TEST MIDLE (linear)",
         ):
             input = np.load(path)
@@ -327,7 +320,7 @@ def load_dataset_split(
 
         # BOTTOM
         for path in tqdm(
-            glob.glob("RNN_analyze/reservoir_inputs/test/bottom/*.npy"),
+            glob.glob(os.path.join(cfg.INPUT_DIR, "test", "bottom", "*.npy")),
             desc="TEST BOTTOM (linear)",
         ):
             input = np.load(path)
@@ -349,18 +342,15 @@ def load_dataset_split(
     if len(X_train) == 0:
         raise RuntimeError("No training data loaded.")
 
-    T_max = max(x.shape[0] for x in X_train + X_test)
-
-    X_train_flat = np.stack([pad_and_integrate(x, T_max) for x in X_train])
-    X_test_flat = np.stack([pad_and_integrate(x, T_max) for x in X_test])
-
     return (
-        X_train_flat,
+        X_train,
         np.array(y_train),
-        X_test_flat,
+        X_test,
         np.array(y_test),
         X_test_paths,
     )
+
+
 
 # --- Pad sequences to T_max and flatten ---
 def pad_and_integrate(x, T_max):
@@ -369,6 +359,14 @@ def pad_and_integrate(x, T_max):
         pad = np.zeros((T_max - T, M), dtype=np.float32)
         x = np.vstack([x, pad])
     return x.mean(axis=0)
+
+
+def delay_answer(y, T_max, delay):
+    C = 3
+    Y = np.zeros((T_max,C), dtype=np.float32)
+    delay_steps = int(delay / 0.0001)  # assuming dt=0.0001
+    Y[delay_steps:delay_steps+1000,y] = 0.8
+    return Y
 
 # ================================
 # 2. 線形 readout の学習 (ridge regression)
@@ -396,7 +394,7 @@ def train_readout(X: np.ndarray, y: np.ndarray, lambda_reg: float = 1e-2, batch_
     XtY = np.zeros((D, C), dtype=np.float64)
     
     # 2. データをバッチサイズ（例: 5000行）ごとに区切って処理
-    print(f"Training readout in batches (N={num_samples}, Batch={batch_size})...")
+    # print(f"Training readout in batches (N={num_samples}, Batch={batch_size})...")
     
     for i in range(0, num_samples, batch_size):
         end = min(i + batch_size, num_samples)
@@ -431,18 +429,14 @@ def train_readout(X: np.ndarray, y: np.ndarray, lambda_reg: float = 1e-2, batch_
     
     return W_out.astype(np.float32)
 
+# ================================
+# 4. テストの精度測定
+# ================================
 
-# ================================
-# 3. 推論
-# ================================
 def predict(W_out: np.ndarray, feat: np.ndarray) -> np.intp:
     logits = feat @ W_out  # shape = (C,)
     return np.argmax(logits)
 
-
-# ================================
-# 4. テストの精度測定
-# ================================
 def evaluate(W_out: np.ndarray, X: np.ndarray, y: np.ndarray) -> float:
     correct = 0
     for feat, label in zip(X, y):
@@ -451,40 +445,64 @@ def evaluate(W_out: np.ndarray, X: np.ndarray, y: np.ndarray) -> float:
             correct += 1
     return correct / len(y)
 
+def calc_r2(W_out: np.ndarray, X: np.ndarray, y: np.ndarray) -> float:
+    Y = X @ W_out  # shape = (C,)
+    # print(Y.shape)
+    # print(y.shape)
+    Y = Y.reshape(-1)
+    y = y.reshape(-1)    
+    # 【追加】分散が0（すべての値が同じ）なら、相関は計算できないので 0 を返す
+    if np.std(Y) == 0 or np.std(y) == 0:
+        return 0.0
 
-# ================================
-# 5. メイン処理
-# ================================
-def main_train(num_of_cells: int, seed: int) -> None:
-    print(f"Mode: {args.mode}")
-    print(f"Number of reservoir cells: {num_of_cells}")
-    print(f"Random seed: {seed}")
-    print("Loading dataset...")
-    X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(num_of_cells, seed)
-    print("Train shape:", X_train.shape)
-    print("Test  shape:", X_test.shape)
+    # サイズ不一致チェック（念のため）
+    if Y.shape[0] != y.shape[0]:
+        print(f"Error: Shape mismatch in calc_r2. Pred: {Y.shape}, True: {y.shape}")
+        return 0.0
+
+    # 正常なら計算
+    corr_matrix = np.corrcoef(Y, y)
+    
+    # NaNチェック（念のため）
+    if np.isnan(corr_matrix[0, 1]):
+        return 0.0
+        
+    r = corr_matrix[0, 1]
+    r2 = r ** 2
+    return r2
+
+def spatial_recognition(mode: str, num_of_cells: int = cfg.N, seed: int = cfg.SEED) -> None:
+    X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(mode, num_of_cells, seed)
+    T_max = max(x.shape[0] for x in X_train + X_test)
+    X_train_flat = np.stack([pad_and_integrate(x, T_max) for x in X_train])
+    X_test_flat = np.stack([pad_and_integrate(x, T_max) for x in X_test])
+    del X_train
+    del X_test
+    gc.collect()
+
+    print("Train shape:", X_train_flat.shape)
+    print("Test  shape:", X_test_flat.shape)
 
     # load_dataset_split の戻り値を受け取った直後あたりに追加
-    print("top feat mean:", X_train[y_train == 0].mean(axis=0)[:10])
-    print("middle feat mean:", X_train[y_train == 1].mean(axis=0)[40:50])
-    print("bottom feat mean:", X_train[y_train == 2].mean(axis=0)[80:90])
+    print("top feat mean:", X_train_flat[y_train == 0].mean(axis=0)[:10])
+    print("middle feat mean:", X_train_flat[y_train == 1].mean(axis=0)[40:50])
+    print("bottom feat mean:", X_train_flat[y_train == 2].mean(axis=0)[80:90])
     print(
         "difference norm:",
         np.linalg.norm(
-            X_train[y_train == 0].mean(axis=0) - X_train[y_train == 1].mean(axis=0)
+            X_train_flat[y_train == 0].mean(axis=0) - X_train_flat[y_train == 1].mean(axis=0)
         ),
     )
 
     print("Training readout...")
-    W_out = train_readout(X_train, y_train, lambda_reg=1e-2)
+    W_out = train_readout(X_train_flat, y_train, lambda_reg=1e-2)
 
     # 精度評価
-    acc_train = evaluate(W_out, X_train, y_train)
-    acc_test = evaluate(W_out, X_test, y_test)
-
+    acc_train = evaluate(W_out, X_train_flat, y_train)
+    acc_test = evaluate(W_out, X_test_flat, y_test)
     y_train_shuffled = np.random.permutation(y_train)
-    W_out_shuffled = train_readout(X_train, y_train_shuffled)
-    acc_test_shuffled = evaluate(W_out_shuffled, X_test, y_test)
+    W_out_shuffled = train_readout(X_train_flat, y_train_shuffled)
+    acc_test_shuffled = evaluate(W_out_shuffled, X_test_flat, y_test)
     print(f"label shuffled test accuracy: {acc_test_shuffled}")
 
     # --- Confusion Matrix ---
@@ -492,7 +510,7 @@ def main_train(num_of_cells: int, seed: int) -> None:
     num_classes = len(classes)
     misclassified = []
     conf = np.zeros((num_classes, num_classes), dtype=int)
-    for feat, true_label, path in zip(X_test, y_test, X_test_paths):
+    for feat, true_label, path in zip(X_test_flat, y_test, X_test_paths):
         pred_label = predict(W_out, feat)
         conf[true_label, pred_label] += 1
         if true_label != pred_label:
@@ -538,6 +556,9 @@ def main_train(num_of_cells: int, seed: int) -> None:
     plt.colorbar()
     plt.tight_layout()
 
+    # ================================================
+    # Save results
+    # ================================================
     folder = datetime.now().strftime("%Y%m%d")
     timestamp = datetime.now().strftime("%H%M")
     filename = "confusion_matrix_.png"
@@ -561,8 +582,6 @@ def main_train(num_of_cells: int, seed: int) -> None:
         # for path, true_label, pred_label in misclassified:
         #     print(f"  {path}  true={true_label}, pred={pred_label}")
 
-    Path("audio_rc/results").mkdir(exist_ok=True)
-
     result = {
         "mode": args.mode,
         "seed": seed,
@@ -574,8 +593,76 @@ def main_train(num_of_cells: int, seed: int) -> None:
     with open("RNN_analyze/results.jsonl", "a") as f:
         f.write(json.dumps(result) + "\n")
 
+def delayed_space(mode: str, num_of_cells: int = cfg.N, seed: int = cfg.SEED) -> None:
+    X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(mode, num_of_cells, seed)
+    
+    X_train_array = np.vstack([x for x in X_train])
+    X_test_array = np.vstack([x for x in X_test])
+    del X_train
+    del X_test
+    gc.collect()
+
+    print("Train shape:", X_train_array.shape)
+    print("Test  shape:", X_test_array.shape)
+    del X_test_paths
+
+    num_trials = len(y_train)
+    total_rows = X_train_array.shape[0]
+    steps_per_trial = total_rows // num_trials
+    T_max = int(steps_per_trial * 0.0001)
+
+    print("Training readout...")
+    print()
+    duration = 0.01
+    steps = int(T_max // duration)
+    t = np.zeros(steps)
+    r_train = np.zeros(steps)
+    r_test = np.zeros(steps)
+    for i in tqdm(np.arange(steps), desc="short term memory"):
+        delay = duration * i
+        Y_train_delayed = np.vstack([delay_answer(y, steps_per_trial, delay) for y in y_train])
+        Y_test_delayed = np.vstack([delay_answer(y, steps_per_trial, delay) for y in y_test])
+        W_out = train_readout(X_train_array, Y_train_delayed, lambda_reg=1e-2)
+        # 精度評価
+        t[i] = delay
+        r_train[i] = calc_r2(W_out, X_train_array, Y_train_delayed)
+        r_test[i] = calc_r2(W_out, X_test_array, Y_test_delayed)
+        del Y_train_delayed
+        del Y_test_delayed
+        if i != steps - 1:
+            del W_out
+        gc.collect()
+
+    # show graph
+    plt.figure(figsize=(8, 6)) 
+    plt.plot(t, r_train, label='Dataset 1', linestyle='-', color='blue')
+    plt.plot(t, r_test, label='Dataset 2', linestyle='-', color='orange')
+    plt.title("short term memory")
+    plt.xlabel(" τ [s] ")
+    plt.ylabel("r^2")
+    plt.legend()
+    plt.grid(True)
+
+
+    # ================================================
+    # Save results
+    # ================================================
+    folder = datetime.now().strftime("%Y%m%d")
+    timestamp = datetime.now().strftime("%H%M")
+    filename = "short-term-memory.png"
+    os.makedirs(f"RNN_analyze/data/{folder}/{timestamp}", exist_ok=True)
+    plt.savefig(f"RNN_analyze/data/{folder}/{timestamp}/{filename}")
+    plt.close()
+    print(f"Saved {filename}")
+    data = np.column_stack([t, r_train, r_test])
+    filename = "short-term-memory.npy"
+    np.save(f"RNN_analyze/data/{folder}/{timestamp}/{filename}", data)
+
+
+    # 保存
+    np.save("RNN_analyze/reservoir_outputs/W_out.npy", W_out)
+    print("Saved W_out.npy")
+
 
 if __name__ == "__main__":
-    num_of_cells = args.cells
-    seed = args.seed
-    main_train(num_of_cells, seed)
+    main()
