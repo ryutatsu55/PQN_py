@@ -221,21 +221,19 @@ def load_dataset_split(
     X_test = [X_test[i] for i in perm_test]
     y_test = [y_test[i] for i in perm_test]
 
-    # --- Pad sequences to T_max and flatten ---
-    def pad_and_flatten(x, T_max):
-        T, M = x.shape
-        if T < T_max:
-            pad = np.zeros((T_max - T, M), dtype=np.float32)
+    # after loading X_train (list of (T, M))
+    Ts = [x.shape[0] for x in X_train]
+    T_fixed = int(np.median(Ts))  # ← まずこれ
+
+    def pad_and_flatten(x):
+        x = x[:T_fixed]
+        if x.shape[0] < T_fixed:
+            pad = np.zeros((T_fixed - x.shape[0], x.shape[1]), dtype=np.float32)
             x = np.vstack([x, pad])
-        return x.reshape(-1).astype(np.float32)
+        return x.reshape(-1)
 
-    if len(X_train) == 0:
-        raise RuntimeError("No training data loaded.")
-
-    T_max = max(x.shape[0] for x in X_train + X_test)
-
-    X_train_flat = np.stack([pad_and_flatten(x, T_max) for x in X_train])
-    X_test_flat = np.stack([pad_and_flatten(x, T_max) for x in X_test])
+    X_train_flat = np.stack([pad_and_flatten(x) for x in X_train])
+    X_test_flat = np.stack([pad_and_flatten(x) for x in X_test])
 
     return (
         X_train_flat,
@@ -402,7 +400,7 @@ def main_train(num_of_cells: int, seed: int) -> None:
         "acc_test": acc_test,
     }
 
-    with open("audio_rc/results/results.jsonl", "a") as f:
+    with open("audio_rc/results/results_mf.jsonl", "a") as f:
         f.write(json.dumps(result) + "\n")
 
 
