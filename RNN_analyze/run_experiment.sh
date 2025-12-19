@@ -21,19 +21,20 @@ RESET='\033[0m'
 PYTHON_EXEC="python"
 
 # タイムスタンプ取得 (実験IDとする)
-TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+DATESTAMP=$(date +"%Y%m%d")
+TIMESTAMP=$(date +"%H%M")
 
 # 引数がある場合は実験名に追加
 if [ -z "${1:-}" ]; then
-    EXP_NAME="${TIMESTAMP}"
+    EXP_NAME="${DATESTAMP}/${TIMESTAMP}"
 else
-    EXP_NAME="${TIMESTAMP}_${1}"
+    EXP_NAME="${DATESTAMP}/${TIMESTAMP}_${1}"
 fi
 
 # 結果保存ディレクトリ
 BASE_DIR="RNN_analyze"
-RESULTS_DIR="${BASE_DIR}/results/${EXP_NAME}"
-CONFIG_SRC="src/RNN_config.py" # 環境に合わせてパスを調整してください
+RESULTS_DIR="${BASE_DIR}/archive/${EXP_NAME}"
+CONFIG_SRC="${BASE_DIR}/RNN_config.py" # 環境に合わせてパスを調整してください
 
 # --- 2. ユーティリティ関数 (Helper Functions) ---
 
@@ -80,34 +81,32 @@ fi
 # Step 1: データ生成
 section_header "Step 1: Input Data Generation"
 log_info "Running make_spatial_input.py..."
-${PYTHON_EXEC} make_spatial_input.py
+${PYTHON_EXEC} ${BASE_DIR}/make_spatial_input.py
 
 # Step 2: 空間認識 (SNNモード)
 section_header "Step 2: Spatial Recognition (SNN Mode)"
-log_info "Running spatial_recognition.py..."
+log_info "Running recognition_test.py..."
 # tqdmの表示が崩れないようにPYTHONUNBUFFERED=1をつけるのがコツ
-PYTHONUNBUFFERED=1 ${PYTHON_EXEC} RNN_analyze/spatial_recognition.py \
+PYTHONUNBUFFERED=1 ${PYTHON_EXEC} ${BASE_DIR}/recognition_test.py \
     --mode snn \
-    --seed 1
+    --classifier both
 
-# Step 3: 時空間認識 (Featureモード)
-section_header "Step 3: Spatiotemporal Recognition (Feature Mode)"
-log_info "Running spatiotemp_recognition.py..."
-PYTHONUNBUFFERED=1 ${PYTHON_EXEC} RNN_analyze/spatiotemp_recognition.py \
-    --mode feature \
-    --seed 100
+# # Step 3: 時空間認識 (Featureモード)
+# section_header "Step 3: Spatiotemporal Recognition (Feature Mode)"
+# log_info "Running spatiotemp_recognition.py..."
+# PYTHONUNBUFFERED=1 ${PYTHON_EXEC} RNN_analyze/spatiotemp_recognition.py \
+#     --mode feature
 
 # Step 4: 結果の集約
 section_header "Step 4: Archiving Results"
 
 # 生成されたデータや画像を結果フォルダに移動/コピー
 # (実際の保存先パスに合わせて調整してください)
-DATA_SRC="${BASE_DIR}/data"
-FIGS_SRC="${BASE_DIR}/figs" # もしあれば
+DATA_SRC="${BASE_DIR}/result"
 
 if [ -d "${DATA_SRC}" ]; then
     log_info "データを結果フォルダにアーカイブ中..."
-    cp -r "${DATA_SRC}/." "${RESULTS_DIR}/data/" 2>/dev/null || true
+    cp -r "${DATA_SRC}/." "${RESULTS_DIR}" 2>/dev/null || true
 fi
 
 # --- 4. 完了 (Completion) ---

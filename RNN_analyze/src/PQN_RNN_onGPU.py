@@ -58,6 +58,7 @@ def main(
     N: int = 500,
     record: bool = False,
     S_durt = 1e-2,  # 10[ms]
+    cfg=None,
 ):
     """
     SNNシミュレーションのメイン関数
@@ -335,13 +336,13 @@ def main(
     v = v / 2**RSexci.BIT_WIDTH_FRACTIONAL
     # ---- plot simulation result ----
     if record:
-        visualize_matrix(reservoir_state["reservoir_weight"], plot_num)
+        visualize_matrix(reservoir_state["reservoir_weight"], plot_num, cfg)
         plot_num += 1
 
-        plot_single_neuron(0, dt, tmax, num_steps, input, v, plot_num)
+        plot_single_neuron(0, dt, tmax, num_steps, input, v, plot_num, cfg)
         plot_num += 1
 
-        plot_raster(dt, tmax, rasters, N, plot_num)
+        plot_raster(dt, tmax, rasters, N, plot_num, cfg)
         plot_num += 1
 
     # plt.show()
@@ -400,7 +401,7 @@ def param_h_init(PQN):
         raise ValueError("Invalid PQN mode")
 
 
-def visualize_matrix(matrix, num):
+def visualize_matrix(matrix, num, cfg):
     plt.figure(num=num, figsize=(8, 6))
     max_abs = np.max(np.abs(matrix))
     im = plt.imshow(matrix, aspect="auto", cmap="plasma", vmin=-max_abs, vmax=max_abs)
@@ -410,14 +411,14 @@ def visualize_matrix(matrix, num):
     plt.xlabel("Pre Neuron")
     plt.ylabel("Post Neuron")
     plt.tight_layout()
-    save_path = os.path.join("data", "resovoir_weight_matrix.png")
-    plt.savefig("RNN_analyze/data/resovoir_weight_matrix.png")
+    plt.savefig(f"{cfg.RESULT_DIR}/figs/reservoir_weight_matrix.png")
+    np.save(f"{cfg.RESULT_DIR}/data/reservoir.npy", matrix)
     if REC:
         save_path = os.path.join(OUTDIR, "resovoir_weight_matrix.png")
         plt.savefig(save_path)
 
 
-def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, num):
+def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, num, cfg):
     fig = plt.figure(num=num, figsize=(10, 4))
     spec = gridspec.GridSpec(
         ncols=1, nrows=2, figure=fig, hspace=0.1, height_ratios=[1, 4]
@@ -432,14 +433,13 @@ def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, num):
     ax1.set_ylabel("v")
     ax0.set_ylabel("I")
     ax1.set_xlabel("[s]")
-    save_path = os.path.join("data", "single_neuron.png")
-    plt.savefig("RNN_analyze/data/single_neuron.png")
+    plt.savefig(f"{cfg.RESULT_DIR}/figs/single_neuron.png")
     if REC:
         save_path = os.path.join(OUTDIR, f"single_neuron.png")
         plt.savefig(save_path)
 
 
-def plot_raster(dt, tmax, rasters, N, num):
+def plot_raster(dt, tmax, rasters, N, num, cfg):
     times, neuron_ids = np.nonzero(rasters)
     times = times * dt
     neuron_ids = neuron_ids  # Adjust neuron IDs to start from 1
@@ -454,8 +454,8 @@ def plot_raster(dt, tmax, rasters, N, num):
     plt.ylim(0, N)
     plt.title("Raster Plot")
     plt.tight_layout()
-    save_path = os.path.join("data", "raster.png")
-    plt.savefig("RNN_analyze/data/raster.png")
+    plt.savefig(f"{cfg.RESULT_DIR}/figs/raster.png")
+    np.save(f"{cfg.RESULT_DIR}/data/raster.npy", rasters)
     if REC:
         save_path = os.path.join(OUTDIR, "raster.png")
         plt.savefig(save_path)

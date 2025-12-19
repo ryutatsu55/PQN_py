@@ -88,6 +88,8 @@ def load_dataset_split(
                 is_debug_print=False,
                 N=num_of_cells,
                 record = is_last_loop,
+                S_durt=cfg.INPUT_DT,
+                cfg=cfg,
             )
             X_train.append(feat)
             y_train.append(0)
@@ -111,6 +113,8 @@ def load_dataset_split(
                 is_debug_print=False,
                 N=num_of_cells,
                 record = is_last_loop,
+                S_durt=cfg.INPUT_DT,
+                cfg=cfg,
             )
             X_train.append(feat)
             y_train.append(1)
@@ -134,6 +138,8 @@ def load_dataset_split(
                 is_debug_print=False,
                 N=num_of_cells,
                 record = is_last_loop,
+                S_durt=cfg.INPUT_DT,
+                cfg=cfg,
             )
             X_train.append(feat)
             y_train.append(2)
@@ -213,6 +219,8 @@ def load_dataset_split(
                 is_debug_print=False,
                 N=num_of_cells,
                 record=is_last_loop,
+                S_durt=cfg.INPUT_DT,
+                cfg=cfg,
             )
             X_test.append(feat)
             y_test.append(0)
@@ -237,6 +245,8 @@ def load_dataset_split(
                 is_debug_print=False,
                 N=num_of_cells,
                 record=is_last_loop,
+                S_durt=cfg.INPUT_DT,
+                cfg=cfg,
             )
             X_test.append(feat)
             y_test.append(1)
@@ -261,6 +271,8 @@ def load_dataset_split(
                 is_debug_print=False,
                 N=num_of_cells,
                 record=is_last_loop,
+                S_durt=cfg.INPUT_DT,
+                cfg=cfg,
             )
             X_test.append(feat)
             y_test.append(2)
@@ -353,19 +365,23 @@ def load_dataset_split(
 
 
 # --- Pad sequences to T_max and flatten ---
-def pad_and_integrate(x, T_max):
+def pad_and_integrate(x, steps_per_trial):
     T, M = x.shape
-    if T < T_max:
-        pad = np.zeros((T_max - T, M), dtype=np.float32)
+    if T < steps_per_trial:
+        pad = np.zeros((steps_per_trial - T, M), dtype=np.float32)
         x = np.vstack([x, pad])
     return x.mean(axis=0)
 
 
-def delay_answer(y, T_max, delay):
+def delay_answer(y, T_max, delay, mode):
     C = 3
     Y = np.zeros((T_max,C), dtype=np.float32)
-    delay_steps = int(delay / 0.0001)  # assuming dt=0.0001
-    Y[delay_steps:delay_steps+1000,y] = 0.8
+    if mode == "linear":
+        delay_steps = int(delay / cfg.INPUT_DT)
+        Y[delay_steps:delay_steps+int(0.1//cfg.INPUT_DT),y] = 0.8
+    else:
+        delay_steps = int(delay / cfg.DT)
+        Y[delay_steps:delay_steps+int(0.1//cfg.DT),y] = 0.8
     return Y
 
 # ================================
@@ -473,9 +489,9 @@ def calc_r2(W_out: np.ndarray, X: np.ndarray, y: np.ndarray) -> float:
 
 def spatial_recognition(mode: str, num_of_cells: int = cfg.N, seed: int = cfg.SEED) -> None:
     X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(mode, num_of_cells, seed)
-    T_max = max(x.shape[0] for x in X_train + X_test)
-    X_train_flat = np.stack([pad_and_integrate(x, T_max) for x in X_train])
-    X_test_flat = np.stack([pad_and_integrate(x, T_max) for x in X_test])
+    steps_per_trial = X_train[0].shape[0]
+    X_train_flat = np.stack([pad_and_integrate(x, steps_per_trial) for x in X_train])
+    X_test_flat = np.stack([pad_and_integrate(x, steps_per_trial) for x in X_test])
     del X_train
     del X_test
     gc.collect()
@@ -559,11 +575,8 @@ def spatial_recognition(mode: str, num_of_cells: int = cfg.N, seed: int = cfg.SE
     # ================================================
     # Save results
     # ================================================
-    folder = datetime.now().strftime("%Y%m%d")
-    timestamp = datetime.now().strftime("%H%M")
     filename = "confusion_matrix_.png"
-    os.makedirs(f"RNN_analyze/data/{folder}/{timestamp}", exist_ok=True)
-    plt.savefig(f"RNN_analyze/data/{folder}/{timestamp}/{filename}")
+    plt.savefig(f"{cfg.RESULT_DIR}/figs/{filename}")
     plt.close()
     print(f"Saved {filename}")
 
@@ -571,7 +584,8 @@ def spatial_recognition(mode: str, num_of_cells: int = cfg.N, seed: int = cfg.SE
     print(f"Test Accuracy:  {acc_test * 100:.2f}%")
 
     # 保存
-    np.save("RNN_analyze/reservoir_outputs/W_out.npy", W_out)
+    np.save(f"{cfg.OUTPUT_DIR}/W_out_space.npy", W_out)
+    np.save(f"{cfg.RESULT_DIR}/data/W_out_space.npy", W_out)
     print("Saved W_out.npy")
 
     print("\nMisclassified files:")
@@ -590,38 +604,38 @@ def spatial_recognition(mode: str, num_of_cells: int = cfg.N, seed: int = cfg.SE
         "acc_test": acc_test,
     }
 
-    with open("RNN_analyze/results.jsonl", "a") as f:
+    with open(f"{cfg.BASE_DIR}/archive/results.jsonl", "a") as f:
         f.write(json.dumps(result) + "\n")
 
 def delayed_space(mode: str, num_of_cells: int = cfg.N, seed: int = cfg.SEED) -> None:
     X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(mode, num_of_cells, seed)
     
+    steps_per_trial = X_train[0].shape[0]
+    if mode == "linear":
+        T_max = steps_per_trial * cfg.INPUT_DT
+    else:
+        T_max = steps_per_trial * cfg.DT
+
     X_train_array = np.vstack([x for x in X_train])
     X_test_array = np.vstack([x for x in X_test])
     del X_train
     del X_test
+    del X_test_paths
     gc.collect()
 
     print("Train shape:", X_train_array.shape)
     print("Test  shape:", X_test_array.shape)
-    del X_test_paths
-
-    num_trials = len(y_train)
-    total_rows = X_train_array.shape[0]
-    steps_per_trial = total_rows // num_trials
-    T_max = int(steps_per_trial * 0.0001)
 
     print("Training readout...")
-    print()
-    duration = 0.01
+    duration = cfg.SPATIO_TEMP_DT
     steps = int(T_max // duration)
     t = np.zeros(steps)
     r_train = np.zeros(steps)
     r_test = np.zeros(steps)
     for i in tqdm(np.arange(steps), desc="short term memory"):
         delay = duration * i
-        Y_train_delayed = np.vstack([delay_answer(y, steps_per_trial, delay) for y in y_train])
-        Y_test_delayed = np.vstack([delay_answer(y, steps_per_trial, delay) for y in y_test])
+        Y_train_delayed = np.vstack([delay_answer(y, steps_per_trial, delay, mode) for y in y_train])
+        Y_test_delayed = np.vstack([delay_answer(y, steps_per_trial, delay, mode) for y in y_test])
         W_out = train_readout(X_train_array, Y_train_delayed, lambda_reg=1e-2)
         # 精度評価
         t[i] = delay
@@ -635,8 +649,8 @@ def delayed_space(mode: str, num_of_cells: int = cfg.N, seed: int = cfg.SEED) ->
 
     # show graph
     plt.figure(figsize=(8, 6)) 
-    plt.plot(t, r_train, label='Dataset 1', linestyle='-', color='blue')
-    plt.plot(t, r_test, label='Dataset 2', linestyle='-', color='orange')
+    plt.plot(t, r_train, label='train', linestyle='-', color='blue')
+    plt.plot(t, r_test, label='test', linestyle='-', color='orange')
     plt.title("short term memory")
     plt.xlabel(" τ [s] ")
     plt.ylabel("r^2")
@@ -647,21 +661,18 @@ def delayed_space(mode: str, num_of_cells: int = cfg.N, seed: int = cfg.SEED) ->
     # ================================================
     # Save results
     # ================================================
-    folder = datetime.now().strftime("%Y%m%d")
-    timestamp = datetime.now().strftime("%H%M")
-    filename = "short-term-memory.png"
-    os.makedirs(f"RNN_analyze/data/{folder}/{timestamp}", exist_ok=True)
-    plt.savefig(f"RNN_analyze/data/{folder}/{timestamp}/{filename}")
+    filename = "short-term-memory"
+    plt.savefig(f"{cfg.RESULT_DIR}/figs/{filename}.png")
     plt.close()
     print(f"Saved {filename}")
     data = np.column_stack([t, r_train, r_test])
-    filename = "short-term-memory.npy"
-    np.save(f"RNN_analyze/data/{folder}/{timestamp}/{filename}", data)
+    np.save(f"{cfg.RESULT_DIR}/data/{filename}.npy", data)
 
 
     # 保存
-    np.save("RNN_analyze/reservoir_outputs/W_out.npy", W_out)
-    print("Saved W_out.npy")
+    filename = "W_out_spatiotemp"
+    np.save(f"{cfg.RESULT_DIR}/data/{filename}.npy", W_out)
+    print(f"Saved {filename}")
 
 
 if __name__ == "__main__":

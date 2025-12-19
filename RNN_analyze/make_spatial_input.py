@@ -18,7 +18,7 @@ def make_data():
     dt = cfg.INPUT_DT
     N = cfg.N
     hoge = int(N//6)
-    in_neurons = [np.arrange(0, hoge), np.arange(hoge, 2*hoge), np.arange(2*hoge, 3*hoge)]  # 入力ニューロン群のインデックス
+    in_neurons = [np.arange(0, hoge), np.arange(hoge, 2*hoge), np.arange(2*hoge, 3*hoge)]  # 入力ニューロン群のインデックス
     
     stim_steps = int(cfg.DURATION_STIM / dt)
     entire_steps = int(cfg.DURATION_INTERVAL / dt)
@@ -44,7 +44,7 @@ def make_data():
 
     # データ生成ループ (Test)
     for i in range(cfg.N_TEST):
-        input_data = np.zeros((entire_steps, 3 * in_neurons), dtype=float)
+        input_data = np.zeros((entire_steps, int(N//2)), dtype=float)
         target = np.random.randint(0, 3)
         input_data[:stim_steps, in_neurons[target]] = cfg.INPUT_STRENGTH
         

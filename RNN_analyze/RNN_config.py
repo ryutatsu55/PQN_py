@@ -8,10 +8,10 @@ class Config:
     N = 240             # ニューロン総数
     DT = 0.0001
     INPUT_DT = 0.01           # タイムステップ [s] (シミュレーション用)
-    
+    SPATIO_TEMP_DT = 0.01    # タイムステップ [s] (時空間認識タスク用)
     # --- 入力データ生成設定 ---
     DURATION_STIM = 0.1           # 刺激時間 [s]
-    DURATION_INTERVAL = 2.5       # 1試行の長さ [s] (spatial task)
+    DURATION_INTERVAL = 0.5       # 1試行の長さ [s] (spatial task)
     INPUT_STRENGTH = 0.8          # 入力強度
     
     N_TRAIN = 100                 # 学習データ数
@@ -21,8 +21,7 @@ class Config:
     BASE_DIR = "RNN_analyze"
     INPUT_DIR = os.path.join(BASE_DIR, "reservoir_inputs")
     OUTPUT_DIR = os.path.join(BASE_DIR, "reservoir_outputs")
-    FIG_DIR = os.path.join(BASE_DIR, "figs")
-    DATA_DIR = os.path.join(BASE_DIR, "data")
+    RESULT_DIR = os.path.join(BASE_DIR, "result")
     
     # --- リザバー結合パラメータ ---
     RESERVOIR_CONN_PROB = 0.02    # 結合強度係数 (元のコードの * 0.02)
