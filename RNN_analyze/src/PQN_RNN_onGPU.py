@@ -96,8 +96,7 @@ def main(
     if input_data is not None:
         M = input_data.shape[1]
         # 入力チャンネル数分だけ入力層を用意し、そのニューロンにのみ外部入力を与える
-        rng = np.random.default_rng(42)
-        W_in = rng.normal(0, 1, size=(M, M)).astype(np.float32)
+        W_in = np.random.normal(0, 1, size=(M, M)).astype(np.float32)
         # shape: (T, Nin_layer)  → 入力層ニューロンの「前処理された入力」
         projected_input = input_data @ W_in
 

@@ -53,4 +53,5 @@ def make_data():
         np.save(save_path, input_data)
 
 if __name__ == "__main__":
+    RNN_config.set_global_seed(cfg.SEED)
     make_data()

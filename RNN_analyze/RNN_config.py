@@ -200,3 +200,10 @@ def delay_init(resovoir_weight, N, N_S, mask):
             delay_row[i] = 30
     return delay_row
 
+def set_global_seed(seed: int):
+    """すべての乱数生成器のシードを固定する"""
+    random.seed(seed)
+    np.random.seed(seed)
+    # cp.random.seed(seed)
+    Config.SEED = seed  # Configの値も更新
+    print(f"[Config] Global seed set to {seed}")

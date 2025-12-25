@@ -676,4 +676,5 @@ def delayed_space(mode: str, num_of_cells: int = cfg.N, seed: int = cfg.SEED) ->
 
 
 if __name__ == "__main__":
+    RNN_config.set_global_seed(cfg.SEED)
     main()
