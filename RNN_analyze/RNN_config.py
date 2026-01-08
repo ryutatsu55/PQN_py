@@ -9,7 +9,7 @@ class Config:
     DT = 0.0001
     INPUT_DT = 0.01           # タイムステップ [s] (シミュレーション用)
     SPATIO_TEMP_DT = 0.01    # タイムステップ [s] (時空間認識タスク用)
-    # --- 入力データ生成設定 ---
+    # --- 入力データ生成設定(空間認識) ---
     DURATION_STIM = 0.1           # 刺激時間 [s]
     DURATION_INTERVAL = 0.5       # 1試行の長さ [s] (spatial task)
     INPUT_STRENGTH = 0.8          # 入力強度
@@ -26,6 +26,8 @@ class Config:
     # --- リザバー結合パラメータ ---
     RESERVOIR_CONN_PROB = 0.02    # 結合強度係数 (元のコードの * 0.02)
     READOUT_NODES = 60            # 読み出し層のノード数
+
+    INPUT_FREQ = 10
 
 def init_reservoir():
     N = Config.N
@@ -48,6 +50,7 @@ def init_reservoir():
         raise ValueError(f"num of neuron N={N} is too small")
     output_indices = np.random.choice(candidate_indices, readout_num, replace=False)
     return {
+        "N": N,
         "reservoir_weight": resovoir_origin,
         "mask": mask,
         "type": type,
