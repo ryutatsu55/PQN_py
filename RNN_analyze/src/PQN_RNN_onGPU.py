@@ -347,10 +347,17 @@ class PQN_Reservoir_GPU:
         """
         S_durt = self.cfg.INPUT_DT
         # 結果格納用配列
-        self.v_int = np.zeros((num_steps, self.N), dtype=np.int64)
-        self.v_log = np.zeros((num_steps, self.N), dtype=np.float32) # メモリ節約のためfloat32
-        self.raster_log = np.zeros((num_steps, self.N), dtype=np.uint8)
-        self.I_input_log = np.zeros((num_steps, self.N), dtype=np.float32)
+        if (self.v_int is not None) and (self.v_int.shape == (num_steps, self.N)):
+            self.v_int.fill(0)  # メモリ再利用
+            self.v_log.fill(0.0)
+            self.raster_log.fill(0)
+            self.I_input_log.fill(0.0)
+        else:
+            # サイズが違う、または初回の場合だけ新規作成
+            self.v_int = np.zeros((num_steps, self.N), dtype=np.int64)
+            self.v_log = np.zeros((num_steps, self.N), dtype=np.float32)
+            self.raster_log = np.zeros((num_steps, self.N), dtype=np.uint8)
+            self.I_input_log = np.zeros((num_steps, self.N), dtype=np.float32)
         
         # 入力データがある場合のフレームステップ数
         steps_per_frame = int(round(S_durt / self.cfg.DT))
@@ -432,6 +439,7 @@ def main(
     record: bool = False,
     S_durt = 1e-2,
     cfg=None,
+    sim=None,
 ):
     """
     従来の関数インターフェースを維持したラッパー
@@ -439,8 +447,13 @@ def main(
     if cfg is None:
         raise ValueError("Config (cfg) must be provided.")
 
-    # シミュレータのインスタンス化 (Reset stateも含まれる)
-    sim = PQN_Reservoir_GPU(reservoir_state, cfg)
+    # 【修正】simが渡されていなければ作り、渡されていればリセットして使う
+    if sim is None:
+        if is_debug_print: print("Initializing new reservoir instance...")
+        sim = PQN_Reservoir_GPU(reservoir_state, cfg)
+    else:
+        # 重み行列などはそのままに、膜電位などを初期化
+        sim.reset_state()
 
     # ステップ数の計算
     tmax = 10

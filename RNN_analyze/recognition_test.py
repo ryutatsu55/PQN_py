@@ -71,6 +71,7 @@ def load_dataset_split(
 
     # ----- TRAIN -----
     if mode == "snn":
+        sim = PQN_RNN_onGPU.PQN_Reservoir_GPU(reservoir_state, cfg)
         if os.path.exists(cfg.OUTPUT_DIR):
             shutil.rmtree(cfg.OUTPUT_DIR)
         # TOP
@@ -90,6 +91,7 @@ def load_dataset_split(
                 record = is_last_loop,
                 S_durt=cfg.INPUT_DT,
                 cfg=cfg,
+                sim=sim,
             )
             X_train.append(feat)
             y_train.append(0)
@@ -115,6 +117,7 @@ def load_dataset_split(
                 record = is_last_loop,
                 S_durt=cfg.INPUT_DT,
                 cfg=cfg,
+                sim=sim,
             )
             X_train.append(feat)
             y_train.append(1)
@@ -140,6 +143,7 @@ def load_dataset_split(
                 record = is_last_loop,
                 S_durt=cfg.INPUT_DT,
                 cfg=cfg,
+                sim=sim,
             )
             X_train.append(feat)
             y_train.append(2)
@@ -221,6 +225,7 @@ def load_dataset_split(
                 record=is_last_loop,
                 S_durt=cfg.INPUT_DT,
                 cfg=cfg,
+                sim=sim,
             )
             X_test.append(feat)
             y_test.append(0)
@@ -247,6 +252,7 @@ def load_dataset_split(
                 record=is_last_loop,
                 S_durt=cfg.INPUT_DT,
                 cfg=cfg,
+                sim=sim,
             )
             X_test.append(feat)
             y_test.append(1)
@@ -273,6 +279,7 @@ def load_dataset_split(
                 record=is_last_loop,
                 S_durt=cfg.INPUT_DT,
                 cfg=cfg,
+                sim=sim,
             )
             X_test.append(feat)
             y_test.append(2)
