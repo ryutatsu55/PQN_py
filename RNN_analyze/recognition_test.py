@@ -38,18 +38,18 @@ def main(num_of_cells: int = cfg.N, seed: int = cfg.SEED) -> None:
     print(f"Random seed: {seed}")
     print("Loading dataset...")
     if args.classifier == "space":
-        spatial_recognition(mode = args.mode)
+        spatial_recognition(mode = args.mode, seed=seed)
     elif args.classifier == "delayed_space":
-        delayed_space(mode = args.mode)
+        delayed_space(mode = args.mode, seed=seed)
     elif args.classifier == "both":
-        spatial_recognition(mode = args.mode)
-        delayed_space(mode = args.mode if args.mode == "linear" else "feature")
+        spatial_recognition(mode = args.mode, seed=seed)
+        delayed_space(mode = args.mode if args.mode == "linear" else "feature", seed=seed)
 
 # ================================
 # 1. データ読み込み関数
 # ================================
 def load_dataset_split(
-    mode: str, num_of_cells: int, seed: int
+    mode: str, num_of_cells: int, rng
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[str]]:
     X_train, y_train = [], []
     X_test, y_test = [], []
@@ -68,10 +68,11 @@ def load_dataset_split(
         reservoir_state = RNN_config.init_reservoir()
     else:
         reservoir_state = None
-
+    
+    sim = PQN_RNN_onGPU.PQN_Reservoir_GPU(reservoir_state, cfg)
+    
     # ----- TRAIN -----
     if mode == "snn":
-        sim = PQN_RNN_onGPU.PQN_Reservoir_GPU(reservoir_state, cfg)
         if os.path.exists(cfg.OUTPUT_DIR):
             shutil.rmtree(cfg.OUTPUT_DIR)
         # TOP
@@ -348,12 +349,12 @@ def load_dataset_split(
             X_test_paths.append(path)
 
     # shuffle
-    perm_train = np.random.permutation(len(X_train))
+    perm_train = rng.permutation(len(X_train))
 
     X_train = [X_train[i] for i in perm_train]
     y_train = [y_train[i] for i in perm_train]
 
-    perm_test = np.random.permutation(len(X_test))
+    perm_test = rng.permutation(len(X_test))
 
     X_test = [X_test[i] for i in perm_test]
     y_test = [y_test[i] for i in perm_test]
@@ -495,7 +496,8 @@ def calc_r2(W_out: np.ndarray, X: np.ndarray, y: np.ndarray) -> float:
     return r2
 
 def spatial_recognition(mode: str, num_of_cells: int = cfg.N, seed: int = cfg.SEED) -> None:
-    X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(mode, num_of_cells, seed)
+    rng = np.random.RandomState(seed)
+    X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(mode, num_of_cells, rng)
     steps_per_trial = X_train[0].shape[0]
     X_train_flat = np.stack([pad_and_integrate(x, steps_per_trial) for x in X_train])
     X_test_flat = np.stack([pad_and_integrate(x, steps_per_trial) for x in X_test])
@@ -523,7 +525,7 @@ def spatial_recognition(mode: str, num_of_cells: int = cfg.N, seed: int = cfg.SE
     # 精度評価
     acc_train = evaluate(W_out, X_train_flat, y_train)
     acc_test = evaluate(W_out, X_test_flat, y_test)
-    y_train_shuffled = np.random.permutation(y_train)
+    y_train_shuffled = rng.permutation(y_train)
     W_out_shuffled = train_readout(X_train_flat, y_train_shuffled)
     acc_test_shuffled = evaluate(W_out_shuffled, X_test_flat, y_test)
     print(f"label shuffled test accuracy: {acc_test_shuffled}")
@@ -615,7 +617,8 @@ def spatial_recognition(mode: str, num_of_cells: int = cfg.N, seed: int = cfg.SE
         f.write(json.dumps(result) + "\n")
 
 def delayed_space(mode: str, num_of_cells: int = cfg.N, seed: int = cfg.SEED) -> None:
-    X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(mode, num_of_cells, seed)
+    rng = np.random.RandomState(seed)
+    X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(mode, num_of_cells, rng)
     
     steps_per_trial = X_train[0].shape[0]
     if mode == "linear":
@@ -683,5 +686,5 @@ def delayed_space(mode: str, num_of_cells: int = cfg.N, seed: int = cfg.SEED) ->
 
 
 if __name__ == "__main__":
-    RNN_config.set_global_seed(cfg.SEED)
+    # RNN_config.set_global_seed(cfg.SEED)
     main()

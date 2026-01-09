@@ -5,6 +5,7 @@ import shutil
 import RNN_config
 
 cfg = RNN_config.Config
+rng = np.random.RandomState(cfg.SEED)
 
 def make_data():
     print(f"Generating data with N={cfg.N}, Strength={cfg.INPUT_STRENGTH}...")
@@ -33,7 +34,7 @@ def make_data():
     # データ生成ループ (Train)
     for i in range(cfg.N_TRAIN):
         input_data = np.zeros((entire_steps, int(N//2)), dtype=float)
-        target = np.random.randint(0, 3)
+        target = rng.randint(0, 3)
         
         # Configの強度を使用
         input_data[:stim_steps, in_neurons[target]] = cfg.INPUT_STRENGTH
@@ -45,7 +46,7 @@ def make_data():
     # データ生成ループ (Test)
     for i in range(cfg.N_TEST):
         input_data = np.zeros((entire_steps, int(N//2)), dtype=float)
-        target = np.random.randint(0, 3)
+        target = rng.randint(0, 3)
         input_data[:stim_steps, in_neurons[target]] = cfg.INPUT_STRENGTH
         
         cat = categories[target]
@@ -53,5 +54,5 @@ def make_data():
         np.save(save_path, input_data)
 
 if __name__ == "__main__":
-    RNN_config.set_global_seed(cfg.SEED)
+    # RNN_config.set_global_seed(cfg.SEED)
     make_data()

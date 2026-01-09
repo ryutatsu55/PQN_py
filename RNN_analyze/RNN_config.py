@@ -29,18 +29,17 @@ class Config:
 
     INPUT_FREQ = 10
 
-def init_reservoir():
+def init_reservoir(seed=Config.SEED):
     N = Config.N
     seed = Config.SEED
     input_size = N // 2
-    random.seed(seed)
-    np.random.seed(seed)
-    resovoir_origin, mask, type = create_moduled_matrix(N)
+    rng = np.random.RandomState(seed)
+    resovoir_origin, mask, type = create_moduled_matrix(N, rng)
     resovoir_weight = np.copy(resovoir_origin) * Config.RESERVOIR_CONN_PROB
     N_S = np.count_nonzero(resovoir_weight)
     tau_rec_h, tau_inact_h, tau_faci_h, U1_h, U_h, mask_faci_h = synapses_init(resovoir_weight, N, N_S)
     neuron_from_h, calc_matrix_h, neuron_to_h = calc_init(resovoir_weight, N, N_S)
-    delayed_row_h = delay_init(resovoir_weight, N, N_S, mask)
+    delayed_row_h = delay_init(resovoir_weight, N, N_S, mask, rng)
 
     input_indices = np.arange(input_size)
     # candidate_indices = np.arange(input_size, N)
@@ -48,7 +47,7 @@ def init_reservoir():
     readout_num = Config.READOUT_NODES
     if len(candidate_indices) < readout_num:
         raise ValueError(f"num of neuron N={N} is too small")
-    output_indices = np.random.choice(candidate_indices, readout_num, replace=False)
+    output_indices = rng.choice(candidate_indices, readout_num, replace=False)
     return {
         "N": N,
         "reservoir_weight": resovoir_origin,
@@ -69,7 +68,7 @@ def init_reservoir():
         "output_indices": output_indices,
     }
 
-def create_moduled_matrix(N):
+def create_moduled_matrix(N, rng):
     resovoir_weight = np.zeros((N, N))
     crust_idx = 0
     G = 0.5
@@ -78,12 +77,12 @@ def create_moduled_matrix(N):
     while crust_idx != 4:
         i1 = int(crust_idx * N / 4)
         i2 = int((crust_idx + 1) * N / 4)
-        # resovoir_weight[i1:i2, i1:i2] = ((G * np.random.randn(N // 4, N // 4)) + offset) * (
-        #     np.random.rand(N // 4, N // 4) < p
+        # resovoir_weight[i1:i2, i1:i2] = ((G * rng.randn(N // 4, N // 4)) + offset) * (
+        #     rng.rand(N // 4, N // 4) < p
         # )
         resovoir_weight[i1:i2, i1:i2] = (
-            G*(np.random.rand(N//4, N//4)-0.5) + offset
-            ) * (np.random.rand(N//4, N//4) < p)
+            G*(rng.rand(N//4, N//4)-0.5) + offset
+            ) * (rng.rand(N//4, N//4) < p)
         # print(resovoir_weight[i1:i2, i1:i2])
         crust_idx += 1
 
@@ -102,11 +101,11 @@ def create_moduled_matrix(N):
         if j_range2 > N:
             j_range2 = j_range2 % N
         # resovoir_weight[i_range1:i_range2, j_range1:j_range2] = (
-        #     (G * np.random.randn(N // 4, N // 4)) + offset
-        # ) * (np.random.rand(N // 4, N // 4) < p)
+        #     (G * rng.randn(N // 4, N // 4)) + offset
+        # ) * (rng.rand(N // 4, N // 4) < p)
         resovoir_weight[i_range1:i_range2, j_range1:j_range2] = (
-            G*(np.random.rand(N//4, N//4)-0.5) + offset
-            ) * (np.random.rand(N//4, N//4) < p)
+            G*(rng.rand(N//4, N//4)-0.5) + offset
+            ) * (rng.rand(N//4, N//4) < p)
 
         i_range1 = int(((hoge + 1) * N / 4) % N)
         i_range2 = int((hoge + 2) * N / 4)
@@ -116,13 +115,16 @@ def create_moduled_matrix(N):
         j_range2 = int((hoge + 1) * N / 4)
         if j_range2 > N:
             j_range2 = j_range2 % N
+        # resovoir_weight[i_range1:i_range2, j_range1:j_range2] = (
+        #     (G * rng.randn(N // 4, N // 4)) + offset
+        # ) * (rng.rand(N // 4, N // 4) < p)
         resovoir_weight[i_range1:i_range2, j_range1:j_range2] = (
-            (G * np.random.randn(N // 4, N // 4)) + offset
-        ) * (np.random.rand(N // 4, N // 4) < p)
+            G*(rng.rand(N//4, N//4)-0.5) + offset
+            ) * (rng.rand(N//4, N//4) < p)
 
     # 抑制結合の設定
     mask = np.ones((N, N))
-    inhi_idx = np.random.choice(np.arange(N), int(N/4), replace=False)
+    inhi_idx = rng.choice(np.arange(N), int(N/4), replace=False)
     mask[:, inhi_idx] = -1
     resovoir_weight = resovoir_weight * mask
     # resovoir_weight = np.zeros((N, N))#test
@@ -133,21 +135,23 @@ def create_moduled_matrix(N):
     return resovoir_weight, mask, type
 
 
-def create_random_matrix(N):
+def create_random_matrix(N, rng):
     resovoir_weight = np.zeros((N, N))
     G = 0.1
     p = 0.05
-    resovoir_weight = ((G * np.random.randn(N, N)) + 1) * (np.random.rand(N, N) < p)
+    resovoir_weight = ((G * rng.randn(N, N)) + 1) * (rng.rand(N, N) < p)
 
     # 抑制結合の設定
     mask = np.ones((N, N))
-    mask[:, int(4 * N / 5) :] = -1
+    inhi_idx = rng.choice(np.arange(N), int(N/4), replace=False)
+    mask[:, inhi_idx] = -1
     resovoir_weight = resovoir_weight * mask
     # resovoir_weight = np.zeros((N, N))#test
     # resovoir_weight[0, 1] = 1       #test
+    type = np.where(mask[0,:] == 1, 0, 1)
     mask = (resovoir_weight != 0) * mask
 
-    return resovoir_weight, mask
+    return resovoir_weight, mask, type
 
 
 def synapses_init(resovoir_weight, N, N_S):
@@ -188,10 +192,10 @@ def calc_init(resovoir_weight, N, N_S):
     return neuron_from, resovoir_weight_calc, neuron_to
 
 
-def delay_init(resovoir_weight, N, N_S, mask):
+def delay_init(resovoir_weight, N, N_S, mask, rng):
     # delays = np.random.randint(100, 700, size=(N,N))
     # delays = np.full((N, N), 1000, dtype=np.int32)
-    delays = (40 + 60 * np.random.rand(N, N)).astype(np.int32)  # 平均4ms 標準偏差0.75ms
+    delays = (40 + 60 * rng.rand(N, N)).astype(np.int32)  # 平均4ms 標準偏差0.75ms
     delays = delays * (mask != 0)
     delay_row = np.zeros(N_S, dtype=np.int32)
     col_indices, row_indices = np.where(resovoir_weight.T != 0)

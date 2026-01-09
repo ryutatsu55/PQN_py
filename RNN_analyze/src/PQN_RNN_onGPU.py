@@ -33,7 +33,9 @@ mat_vec_mul = module.get_function("mat_vec_mul")
 # 2. Reservoir クラス定義
 # -------------------------------------------------------------
 class PQN_Reservoir_GPU:
-    def __init__(self, reservoir_state, cfg, buffer_size=1001):
+    def __init__(self, reservoir_state, cfg, buffer_size=1001, seed=None):
+        effective_seed = seed if seed is not None else cfg.SEED
+        self.rng = np.random.RandomState(effective_seed)
         """
         GPUメモリの確保と静的パラメータの初期化を行う
         """
@@ -214,7 +216,7 @@ class PQN_Reservoir_GPU:
         # 同じシードで同じ射影になるようにここで固定しても良いが、
         # 呼び出し元で制御することを想定
         input_dim = len(self.reservoir_state["input_indices"])
-        self.W_in = np.random.normal(0, 1, size=(input_dim, input_dim)).astype(np.float32)
+        self.W_in = self.rng.normal(0, 1, size=(input_dim, input_dim)).astype(np.float32)
 
     def step(self, prob_input_vector=None, record=False):
         """
@@ -312,7 +314,7 @@ class PQN_Reservoir_GPU:
         # 入力スパイクの生成と転送 (CPU -> GPU)
         if prob_input_vector is not None:
             # 入力確率に基づいてスパイク生成
-            spike_in_h = (np.random.rand(self.N) < prob_input_vector).astype(np.uint8)
+            spike_in_h = (self.rng.rand(self.N) < prob_input_vector).astype(np.uint8)
             cuda.memcpy_htod_async(self.spike_in_d.gpudata, spike_in_h, stream=self.stream3)
         else:
             # 入力なし（すべて0）
