@@ -4,18 +4,19 @@ import os
 
 class Config:
     # --- 基本設定 ---
-    SEED = 42           # ベースとなるシード値
+    SEED = 100           # ベースとなるシード値
     N = 240             # ニューロン総数
     DT = 0.0001
     INPUT_DT = 0.01           # タイムステップ [s] (シミュレーション用)
     SPATIO_TEMP_DT = 0.01    # タイムステップ [s] (時空間認識タスク用)
     # --- 入力データ生成設定(空間認識) ---
     DURATION_STIM = 0.1           # 刺激時間 [s]
-    DURATION_INTERVAL = 0.5       # 1試行の長さ [s] (spatial task)
+    DURATION_INTERVAL = 2.5       # 1試行の長さ [s] (spatial task)
     INPUT_STRENGTH = 0.8          # 入力強度
     
-    N_TRAIN = 100                 # 学習データ数
-    N_TEST = 100                  # テストデータ数
+    N_TRAIN = 20                 # 学習データ数
+    N_TEST = 10                  # テストデータ数
+    # 14 / 6 for spoken digit
     
     # --- ディレクトリパス設定 ---
     BASE_DIR = "RNN_analyze"

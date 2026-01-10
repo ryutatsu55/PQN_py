@@ -307,8 +307,8 @@ class PQN_Reservoir_GPU:
         self.stream3.wait_for_event(self.evt_update_neuron)
         if record:                                    #recordの記述について追記必要(修正予定)
             cuda.memcpy_dtoh_async(self.raster_log[i], self.raster_d.gpudata, stream=self.stream3)
-            cuda.memcpy_dtoh_async(self.I_input_log[i], self.synapses_out_d.gpudata, stream=self.stream3)
-        cuda.memcpy_dtoh_async(self.v_int[i], self.Vs_d.gpudata, stream=self.stream3)
+            cuda.memcpy_dtoh_async(self.v_int[i], self.Vs_d.gpudata, stream=self.stream3)
+        cuda.memcpy_dtoh_async(self.I_input_log[i], self.synapses_out_d.gpudata, stream=self.stream3)
 
         self.stream3.wait_for_event(self.evt_spike_written)
         # 入力スパイクの生成と転送 (CPU -> GPU)
@@ -401,7 +401,7 @@ class PQN_Reservoir_GPU:
         #     self.raster_log = self.raster_d.get() | self.spike_in_d.get() # 内部発火 + 外部入力
         #     self.I_input_log = self.synapses_out_d.get()
 
-        self.v_log = self.v_int / (2**self.RSexci.BIT_WIDTH_FRACTIONAL)
+        self.v_log = (self.v_int - self.v_int[0,:]) / (2**self.RSexci.BIT_WIDTH_FRACTIONAL)
 
 
         # 結果を辞書などで返す
@@ -497,7 +497,7 @@ def main(
     if return_feature:
         plt.close("all")
         read_indices = reservoir_state["output_indices"]
-        x_t = results["v"][:, read_indices].astype(np.float32)  # shape = (T, Nout)
+        x_t = results["input"][:, read_indices].astype(np.float32)  # shape = (T, Nout)
         return x_t
 
 

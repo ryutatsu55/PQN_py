@@ -374,11 +374,12 @@ def load_dataset_split(
 
 # --- Pad sequences to T_max and flatten ---
 def pad_and_integrate(x, steps_per_trial):
-    T, M = x.shape
-    if T < steps_per_trial:
-        pad = np.zeros((steps_per_trial - T, M), dtype=np.float32)
-        x = np.vstack([x, pad])
-    return x.mean(axis=0)
+    # print(x.shape)
+    # T, M = x.shape
+    # if T < steps_per_trial:
+    #     pad = np.zeros((steps_per_trial - T, M), dtype=np.float32)
+    #     x = np.vstack([x, pad])
+    return x.sum(axis=0)
 
 
 def delay_answer(y, T_max, delay, mode):
