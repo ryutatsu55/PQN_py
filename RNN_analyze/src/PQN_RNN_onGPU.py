@@ -234,6 +234,8 @@ class PQN_Reservoir_GPU:
         i = self.step_count
         read_idx = np.int32(i % self.buffer_size)
 
+        j = self.iter_count
+
         # 1. ニューロン状態更新カーネル
         update_neuron_state(
             self.Vs_d.gpudata,
@@ -306,9 +308,9 @@ class PQN_Reservoir_GPU:
         # 次のステップのために待機が必要な箇所を同期
         self.stream3.wait_for_event(self.evt_update_neuron)
         if record:                                    #recordの記述について追記必要(修正予定)
-            cuda.memcpy_dtoh_async(self.raster_log[i], self.raster_d.gpudata, stream=self.stream3)
-            cuda.memcpy_dtoh_async(self.v_int[i], self.Vs_d.gpudata, stream=self.stream3)
-        cuda.memcpy_dtoh_async(self.I_input_log[i], self.synapses_out_d.gpudata, stream=self.stream3)
+            cuda.memcpy_dtoh_async(self.raster_log[j], self.raster_d.gpudata, stream=self.stream3)
+            cuda.memcpy_dtoh_async(self.v_int[j], self.Vs_d.gpudata, stream=self.stream3)
+        cuda.memcpy_dtoh_async(self.I_input_log[j], self.synapses_out_d.gpudata, stream=self.stream3)
 
         self.stream3.wait_for_event(self.evt_spike_written)
         # 入力スパイクの生成と転送 (CPU -> GPU)
@@ -332,7 +334,7 @@ class PQN_Reservoir_GPU:
         # self.stream2.synchronize()
         # self.stream1.synchronize()
         if record:
-            self.raster_log[i] = self.raster_log[i] | spike_in_h
+            self.raster_log[j] = self.raster_log[j] | spike_in_h
 
         return None
 
@@ -369,7 +371,9 @@ class PQN_Reservoir_GPU:
         # iter_range = tqdm(range(num_steps), desc="Simulating")
 
         # 内部確率ベクトルの初期化
-        self.prob_all[:] = 0.0
+        prob_spontaneous = self.cfg.SPONTANEOUS_FREQ * self.cfg.DT
+        self.prob_all[:] = prob_spontaneous
+        self.iter_count = 0
 
         for t in iter_range:
             # --- 入力データの更新処理 ---
@@ -378,14 +382,16 @@ class PQN_Reservoir_GPU:
                     idx = t // steps_per_frame
                     if idx < input_data.shape[0]:
                         # 入力強度を入力確率に変換
+                        self.prob_all[:] = prob_spontaneous
                         prob_input = self.cfg.INPUT_FREQ * self.cfg.DT * input_data[idx]
-                        self.prob_all[self.input_indices] = prob_input
+                        self.prob_all[self.input_indices] += prob_input
 
             
             # --- 1ステップ実行 ---
             # input_dataがある場合は更新された prob_all を使用
             # input_dataがない場合(None)は prob_all (ゼロ) を使用
             self.step(prob_input_vector=self.prob_all, record=record)
+            self.iter_count += 1
 
         # --- データの記録 (必要に応じて) ---
         # if record:

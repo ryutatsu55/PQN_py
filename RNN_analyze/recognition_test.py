@@ -387,10 +387,10 @@ def delay_answer(y, T_max, delay, mode):
     Y = np.zeros((T_max,C), dtype=np.float32)
     if mode == "linear":
         delay_steps = int(delay / cfg.INPUT_DT)
-        Y[delay_steps:delay_steps+int(0.1//cfg.INPUT_DT),y] = 0.8
+        Y[delay_steps:delay_steps+int(0.1//cfg.INPUT_DT),y] = cfg.INPUT_STRENGTH
     else:
         delay_steps = int(delay / cfg.DT)
-        Y[delay_steps:delay_steps+int(0.1//cfg.DT),y] = 0.8
+        Y[delay_steps:delay_steps+int(0.1//cfg.DT),y] = cfg.INPUT_STRENGTH
     return Y
 
 # ================================

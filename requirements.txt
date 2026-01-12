@@ -9,3 +9,5 @@ pycuda
 # for making cochleagram
 librosa
 lyon
+
+seaborn

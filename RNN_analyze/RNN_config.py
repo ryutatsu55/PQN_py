@@ -12,7 +12,7 @@ class Config:
     # --- 入力データ生成設定(空間認識) ---
     DURATION_STIM = 0.1           # 刺激時間 [s]
     DURATION_INTERVAL = 2.5       # 1試行の長さ [s] (spatial task)
-    INPUT_STRENGTH = 0.8          # 入力強度
+    INPUT_STRENGTH = 1.0          # 入力強度
     
     N_TRAIN = 20                 # 学習データ数
     N_TEST = 10                  # テストデータ数
@@ -25,10 +25,11 @@ class Config:
     RESULT_DIR = os.path.join(BASE_DIR, "result")
     
     # --- リザバー結合パラメータ ---
-    RESERVOIR_CONN_PROB = 0.02    # 結合強度係数 (元のコードの * 0.02)
+    RESERVOIR_CONN_PROB = 0.05    # 結合強度係数 (元のコードの * 0.02)
     READOUT_NODES = 60            # 読み出し層のノード数
 
-    INPUT_FREQ = 10
+    SPONTANEOUS_FREQ = 0.1
+    INPUT_FREQ = 20
 
 def init_reservoir(seed=Config.SEED):
     N = Config.N
@@ -71,8 +72,9 @@ def init_reservoir(seed=Config.SEED):
 
 def create_moduled_matrix(N, rng):
     resovoir_weight = np.zeros((N, N))
+    block_size = N // 4
     crust_idx = 0
-    G = 0.5
+    G = 2.0
     p = 0.08
     offset = 1.0
     while crust_idx != 4:
@@ -81,15 +83,30 @@ def create_moduled_matrix(N, rng):
         # resovoir_weight[i1:i2, i1:i2] = ((G * rng.randn(N // 4, N // 4)) + offset) * (
         #     rng.rand(N // 4, N // 4) < p
         # )
+        # resovoir_weight[i1:i2, i1:i2] = (
+        #     G*(rng.rand(N//4, N//4)-0.5) + offset
+        #     ) * (rng.rand(N//4, N//4) < p)
+        
+        # 1. ニューロンごとに異なる「接続確率」を作成する
+        # 対数正規分布を使って「ムラ」を作る (sigmaが大きいほどムラが激しくなる)
+        # size=(1, block_size) にすることで「列（前ニューロン）」ごとに確率を変える
+        variability = rng.lognormal(mean=0.0, sigma=2.0, size=(1, block_size))
+        # 平均が元の p (0.08) になるように正規化
+        variability = variability / np.mean(variability)
+        p_vec = p * variability
+        # 確率が 1.0 を超えないようにクリップ
+        p_vec = np.clip(p_vec, 0.0, 1.0)
+        # rng.rand(N, N) < (1, N) の比較により、ブロードキャスト
+        mask = rng.rand(block_size, block_size) < p_vec
         resovoir_weight[i1:i2, i1:i2] = (
-            G*(rng.rand(N//4, N//4)-0.5) + offset
-            ) * (rng.rand(N//4, N//4) < p)
-        # print(resovoir_weight[i1:i2, i1:i2])
+            G * (rng.rand(block_size, block_size) - 0.5) + offset
+        ) * mask
+
         crust_idx += 1
 
     # クラスター間の接続
     M = 4
-    G = 0.5
+    G = 2.0
     p = 0.01
     offset = 1.0
     for hoge in range(M):
@@ -104,9 +121,18 @@ def create_moduled_matrix(N, rng):
         # resovoir_weight[i_range1:i_range2, j_range1:j_range2] = (
         #     (G * rng.randn(N // 4, N // 4)) + offset
         # ) * (rng.rand(N // 4, N // 4) < p)
+        # resovoir_weight[i_range1:i_range2, j_range1:j_range2] = (
+        #     G*(rng.rand(N//4, N//4)-0.5) + offset
+        #     ) * (rng.rand(N//4, N//4) < p)
+        
+        variability = rng.lognormal(mean=0.0, sigma=2.0, size=(1, block_size))
+        variability = variability / np.mean(variability)
+        p_vec = p * variability
+        p_vec = np.clip(p_vec, 0.0, 1.0)
+        mask = rng.rand(block_size, block_size) < p_vec
         resovoir_weight[i_range1:i_range2, j_range1:j_range2] = (
-            G*(rng.rand(N//4, N//4)-0.5) + offset
-            ) * (rng.rand(N//4, N//4) < p)
+            G * (rng.rand(block_size, block_size) - 0.5) + offset
+        ) * mask
 
         i_range1 = int(((hoge + 1) * N / 4) % N)
         i_range2 = int((hoge + 2) * N / 4)
@@ -119,9 +145,18 @@ def create_moduled_matrix(N, rng):
         # resovoir_weight[i_range1:i_range2, j_range1:j_range2] = (
         #     (G * rng.randn(N // 4, N // 4)) + offset
         # ) * (rng.rand(N // 4, N // 4) < p)
+        # resovoir_weight[i_range1:i_range2, j_range1:j_range2] = (
+        #     G*(rng.rand(N//4, N//4)-0.5) + offset
+        #     ) * (rng.rand(N//4, N//4) < p)
+        
+        variability = rng.lognormal(mean=0.0, sigma=2.0, size=(1, block_size))
+        variability = variability / np.mean(variability)
+        p_vec = p * variability
+        p_vec = np.clip(p_vec, 0.0, 1.0)
+        mask = rng.rand(block_size, block_size) < p_vec
         resovoir_weight[i_range1:i_range2, j_range1:j_range2] = (
-            G*(rng.rand(N//4, N//4)-0.5) + offset
-            ) * (rng.rand(N//4, N//4) < p)
+            G * (rng.rand(block_size, block_size) - 0.5) + offset
+        ) * mask
 
     # 抑制結合の設定
     mask = np.ones((N, N))
@@ -156,11 +191,11 @@ def create_random_matrix(N, rng):
 
 
 def synapses_init(resovoir_weight, N, N_S):
-    tau_rec = np.full(N_S, 0.1, dtype=np.float32)
-    tau_inact = np.full(N_S, 0.03, dtype=np.float32)
+    tau_rec = np.full(N_S, 0.5, dtype=np.float32)
+    tau_inact = np.full(N_S, 0.3, dtype=np.float32)
     tau_faci = np.full(N_S, 0.53, dtype=np.float32)
-    U1 = np.full(N_S, 0.05, dtype=np.float32)
-    U = np.full(N_S, 0.1, dtype=np.float32)
+    U1 = np.full(N_S, 0.005, dtype=np.float32)
+    U = np.full(N_S, 0.05, dtype=np.float32)
     mask_faci = np.zeros(N_S, dtype=np.uint8)
     col_indices, row_indices = np.where(resovoir_weight.T != 0)
     for i in range(N_S):
@@ -194,9 +229,9 @@ def calc_init(resovoir_weight, N, N_S):
 
 
 def delay_init(resovoir_weight, N, N_S, mask, rng):
-    # delays = np.random.randint(100, 700, size=(N,N))
+    delays = rng.randint(100, 1000, size=(N,N))
     # delays = np.full((N, N), 1000, dtype=np.int32)
-    delays = (40 + 60 * rng.rand(N, N)).astype(np.int32)  # 平均4ms 標準偏差0.75ms
+    # delays = (40 + 60 * rng.rand(N, N)).astype(np.int32)  # 平均4ms 標準偏差0.75ms
     delays = delays * (mask != 0)
     delay_row = np.zeros(N_S, dtype=np.int32)
     col_indices, row_indices = np.where(resovoir_weight.T != 0)
