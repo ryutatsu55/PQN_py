@@ -188,8 +188,9 @@ __global__ void synapses_calc(
         float temp = U_val * x_val * arrival;
         dx -= temp;
         dy += temp;
-        r_val = r_val*(1.0f - dt / tr) + hr_val*dt;
-        hr_val = hr_val*(1.0f - dt / td) + temp / (tr*td);
+        r_val = r_val*(1.0f - dt / td) + hr_val*dt;
+        // hr_val = hr_val*(1.0f - dt / tr) + temp / (tr*td);
+        hr_val = hr_val*(1.0f - dt / tr) + temp;
         
         x_val += dx;
         y_val += dy;

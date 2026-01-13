@@ -85,7 +85,7 @@ def analyze():
     # 5. 結果の可視化
     # ==========================================
     # プロット
-    plt.figure(figsize=(12, 5))
+    plt.figure(figsize=(12, 6))
 
     # (A) 重み行列 (構造)
     plt.subplot(1, 2, 1)
@@ -100,14 +100,14 @@ def analyze():
     # (B) 相関行列 (機能)
     plt.subplot(1, 2, 2)
     sns.heatmap(correlation_matrix, cmap="viridis", center=0.5, vmin=0, vmax=1, cbar=True, square=True)
-    plt.title("Functional Connectivity (Correlation)")
+    plt.title(f"Functional Connectivity (Correlation)\n{mean_corr:.4f}")
     plt.xlabel("Neuron ID")
     plt.ylabel("Neuron ID")
 
     plt.tight_layout()
-    plt.savefig(f"{cfg.RESULT_DIR}/figs/structure_vs_function.png")
+    plt.savefig(f"{cfg.RESULT_DIR}/figs/correlation_matrix.png")
     plt.close()
-    print("Plot saved to: structure_vs_function.png")
+    print("Plot saved to: correlation_matrix.png")
 
     
     np.save(f"{cfg.RESULT_DIR}/data/correlation_matrix.npy", correlation_matrix)

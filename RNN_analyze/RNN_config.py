@@ -25,11 +25,11 @@ class Config:
     RESULT_DIR = os.path.join(BASE_DIR, "result")
     
     # --- リザバー結合パラメータ ---
-    RESERVOIR_CONN_PROB = 0.05    # 結合強度係数 (元のコードの * 0.02)
+    RESERVOIR_CONN = 0.5    # 結合強度係数 (元のコードの * 0.02)
     READOUT_NODES = 60            # 読み出し層のノード数
 
     SPONTANEOUS_FREQ = 0.1
-    INPUT_FREQ = 20
+    INPUT_FREQ = 10
 
 def init_reservoir(seed=Config.SEED):
     N = Config.N
@@ -37,7 +37,7 @@ def init_reservoir(seed=Config.SEED):
     input_size = N // 2
     rng = np.random.RandomState(seed)
     resovoir_origin, mask, type = create_moduled_matrix(N, rng)
-    resovoir_weight = np.copy(resovoir_origin) * Config.RESERVOIR_CONN_PROB
+    resovoir_weight = np.copy(resovoir_origin) * Config.RESERVOIR_CONN
     N_S = np.count_nonzero(resovoir_weight)
     tau_rec_h, tau_inact_h, tau_faci_h, U1_h, U_h, mask_faci_h = synapses_init(resovoir_weight, N, N_S)
     neuron_from_h, calc_matrix_h, neuron_to_h = calc_init(resovoir_weight, N, N_S)
@@ -75,7 +75,7 @@ def create_moduled_matrix(N, rng):
     block_size = N // 4
     crust_idx = 0
     G = 2.0
-    p = 0.08
+    p = 0.05
     offset = 1.0
     while crust_idx != 4:
         i1 = int(crust_idx * N / 4)
@@ -229,9 +229,9 @@ def calc_init(resovoir_weight, N, N_S):
 
 
 def delay_init(resovoir_weight, N, N_S, mask, rng):
-    delays = rng.randint(100, 1000, size=(N,N))
+    # delays = rng.randint(100, 700, size=(N,N))
     # delays = np.full((N, N), 1000, dtype=np.int32)
-    # delays = (40 + 60 * rng.rand(N, N)).astype(np.int32)  # 平均4ms 標準偏差0.75ms
+    delays = (40 + 60 * rng.rand(N, N)).astype(np.int32)  # 平均4ms 標準偏差0.75ms
     delays = delays * (mask != 0)
     delay_row = np.zeros(N_S, dtype=np.int32)
     col_indices, row_indices = np.where(resovoir_weight.T != 0)

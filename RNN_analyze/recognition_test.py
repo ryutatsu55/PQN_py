@@ -10,6 +10,10 @@ import matplotlib.pyplot as plt
 import os
 from pathlib import Path
 import shutil
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+from mpl_toolkits.mplot3d import Axes3D
+from scipy.signal import lfilter
 
 import src.PQN_RNN_onGPU as PQN_RNN_onGPU
 import RNN_config
@@ -36,7 +40,6 @@ def main(num_of_cells: int = cfg.N, seed: int = cfg.SEED) -> None:
     print(f"Mode: {args.mode}")
     print(f"Number of reservoir cells: {num_of_cells}")
     print(f"Random seed: {seed}")
-    print("Loading dataset...")
     if args.classifier == "space":
         spatial_recognition(mode = args.mode, seed=seed)
     elif args.classifier == "delayed_space":
@@ -66,10 +69,10 @@ def load_dataset_split(
     # If linear mode, we do not initialize or use the reservoir
     if mode != "linear":
         reservoir_state = RNN_config.init_reservoir()
+        sim = PQN_RNN_onGPU.PQN_Reservoir_GPU(reservoir_state, cfg) 
     else:
         reservoir_state = None
     
-    sim = PQN_RNN_onGPU.PQN_Reservoir_GPU(reservoir_state, cfg)
     
     # ----- TRAIN -----
     if mode == "snn":
@@ -370,7 +373,358 @@ def load_dataset_split(
         X_test_paths,
     )
 
+def spatial_recognition(mode: str, num_of_cells: int = cfg.N, seed: int = cfg.SEED) -> None:
+    rng = np.random.RandomState(seed)
+    print("\nLoading dataset...")
+    X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(mode, num_of_cells, rng)
+    # print("Applying calcium response filter...")
+    # tau_calcium = 0.8 
+    
+    # X_train = [apply_calcium_filter(x, cfg.DT, tau=tau_calcium) for x in X_train]
+    # X_test  = [apply_calcium_filter(x, cfg.DT, tau=tau_calcium) for x in X_test]
 
+    analyze_trajectories(
+        X_train, 
+        y_train, 
+        save_dir=f"{cfg.RESULT_DIR}/figs", 
+        dt=cfg.DT  # または cfg.DT (シミュレーションの時間刻みに合わせてください)
+    )
+
+    steps_per_trial = X_train[0].shape[0]
+    X_train_flat = np.stack([pad_and_integrate(x, steps_per_trial) for x in X_train])
+    X_test_flat = np.stack([pad_and_integrate(x, steps_per_trial) for x in X_test])
+    del X_train
+    del X_test
+    gc.collect()
+
+    print("\nTrain shape:", X_train_flat.shape)
+    print("Test  shape:", X_test_flat.shape)
+
+    # load_dataset_split の戻り値を受け取った直後あたりに追加
+    print("top feat mean:", X_train_flat[y_train == 0].mean(axis=0)[:10])
+    print("middle feat mean:", X_train_flat[y_train == 1].mean(axis=0)[40:50])
+    print("bottom feat mean:", X_train_flat[y_train == 2].mean(axis=0)[80:90])
+    print(
+        "roughly calclated difference norm between top - middle:",
+        np.linalg.norm(
+            X_train_flat[y_train == 0].mean(axis=0) - X_train_flat[y_train == 1].mean(axis=0)
+        ),
+    )
+
+    print("\nTraining readout...")
+    W_out = train_readout(X_train_flat, y_train, lambda_reg=1e-2)
+
+    # 精度評価
+    acc_train = evaluate(W_out, X_train_flat, y_train)
+    acc_test = evaluate(W_out, X_test_flat, y_test)
+    y_train_shuffled = rng.permutation(y_train)
+    W_out_shuffled = train_readout(X_train_flat, y_train_shuffled)
+    acc_test_shuffled = evaluate(W_out_shuffled, X_test_flat, y_test)
+    print(f"label shuffled test accuracy: {acc_test_shuffled}")
+
+    # --- Confusion Matrix ---
+    classes = np.unique(y_train)
+    num_classes = len(classes)
+    misclassified = []
+    conf = np.zeros((num_classes, num_classes), dtype=int)
+    for feat, true_label, path in zip(X_test_flat, y_test, X_test_paths):
+        pred_label = predict(W_out, feat)
+        conf[true_label, pred_label] += 1
+        if true_label != pred_label:
+            misclassified.append((path, true_label, pred_label))
+
+    print("\nConfusion Matrix (rows=True, cols=Pred):")
+    print(conf)
+    print(f"\nTrue TOP predicted as TOP: {conf[0,0]} / {conf[0].sum()}")
+    print(f"True MIDDLE predicted as MIDDLE:   {conf[1,1]} / {conf[1].sum()}")
+    print(f"True BOTTOM predicted as BOTTOM:   {conf[2,2]} / {conf[2].sum()}\n")
+
+    # --- Save confusion matrix as image ---
+
+    plt.figure(figsize=(4, 4))
+    plt.imshow(conf, cmap="Blues")
+    if args.mode == "linear":
+        plt.title(f"Confusion Matrix (Linear)")
+    else:
+        plt.title(f"Confusion Matrix, N = {num_of_cells}")
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
+
+    # set axis ticks
+    # plt.xticks([0, 1], ["0", "1"])
+    # plt.yticks([0, 1], ["0", "1"])
+    plt.xticks([0, 1, 2], ["Top", "Middle", "Bottom"])
+    plt.yticks([0, 1, 2], ["Top", "Middle", "Bottom"])
+
+    # annotate cells
+    for i in range(num_classes):
+        for j in range(num_classes):
+            plt.text(
+                j,
+                i,
+                str(conf[i, j]),
+                ha="center",
+                va="center",
+                color="black",
+                fontsize=28,
+                fontweight="bold",
+            )
+
+    plt.colorbar()
+    plt.tight_layout()
+
+    # ================================================
+    # Save results
+    # ================================================
+    filename = "confusion_matrix_.png"
+    plt.savefig(f"{cfg.RESULT_DIR}/figs/{filename}")
+    plt.close()
+    print(f"Saved {filename}")
+
+    print(f"Train Accuracy: {acc_train * 100:.2f}%")
+    print(f"Test Accuracy:  {acc_test * 100:.2f}%")
+
+    # 保存
+    np.save(f"{cfg.OUTPUT_DIR}/W_out_space.npy", W_out)
+    np.save(f"{cfg.RESULT_DIR}/data/W_out_space.npy", W_out)
+    print("Saved W_out.npy")
+
+    print("\nMisclassified files:")
+    if len(misclassified) == 0:
+        print("  None! Perfect classification.")
+    else:
+        print(len(misclassified), "files misclassified.")
+        # for path, true_label, pred_label in misclassified:
+        #     print(f"  {path}  true={true_label}, pred={pred_label}")
+
+    result = {
+        "mode": args.mode,
+        "seed": seed,
+        "num_cells": num_of_cells,
+        "acc_train": acc_train,
+        "acc_test": acc_test,
+    }
+
+    with open(f"{cfg.BASE_DIR}/archive/results.jsonl", "a") as f:
+        f.write(json.dumps(result) + "\n")
+
+def delayed_space(mode: str, num_of_cells: int = cfg.N, seed: int = cfg.SEED) -> None:
+    rng = np.random.RandomState(seed)
+    print("\nLoading dataset...")
+    X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(mode, num_of_cells, rng)
+    # print("Applying calcium response filter...")
+    # tau_calcium = 0.8 
+    
+    # X_train = [apply_calcium_filter(x, cfg.DT, tau=tau_calcium) for x in X_train]
+    # X_test  = [apply_calcium_filter(x, cfg.DT, tau=tau_calcium) for x in X_test]
+    
+    steps_per_trial = X_train[0].shape[0]
+    if mode == "linear":
+        T_max = steps_per_trial * cfg.INPUT_DT
+    else:
+        T_max = steps_per_trial * cfg.DT
+
+    X_train_array = np.vstack([x for x in X_train])
+    X_test_array = np.vstack([x for x in X_test])
+    del X_train
+    del X_test
+    del X_test_paths
+    gc.collect()
+
+    print("Train shape:", X_train_array.shape)
+    print("Test  shape:", X_test_array.shape)
+
+    print("\nTraining readout...")
+    duration = cfg.SPATIO_TEMP_DT
+    steps = int(T_max // duration)
+    t = np.zeros(steps)
+    r_train = np.zeros(steps)
+    r_test = np.zeros(steps)
+    for i in tqdm(np.arange(steps), desc="short term memory"):
+        delay = duration * i
+        Y_train_delayed = np.vstack([delay_answer(y, steps_per_trial, delay, mode) for y in y_train])
+        Y_test_delayed = np.vstack([delay_answer(y, steps_per_trial, delay, mode) for y in y_test])
+        W_out = train_readout(X_train_array, Y_train_delayed, lambda_reg=1e-2)
+        # 精度評価
+        t[i] = delay
+        r_train[i] = calc_r2(W_out, X_train_array, Y_train_delayed)
+        r_test[i] = calc_r2(W_out, X_test_array, Y_test_delayed)
+        del Y_train_delayed
+        del Y_test_delayed
+        if i != steps - 1:
+            del W_out
+        gc.collect()
+
+    # show graph
+    plt.figure(figsize=(8, 6)) 
+    plt.plot(t, r_train, label='train', linestyle='-', color='blue')
+    plt.plot(t, r_test, label='test', linestyle='-', color='orange')
+    plt.title("short term memory")
+    plt.xlabel(" τ [s] ")
+    plt.ylabel("r^2")
+    plt.legend()
+    plt.grid(True)
+
+
+    # ================================================
+    # Save results
+    # ================================================
+    filename = "short-term-memory"
+    plt.savefig(f"{cfg.RESULT_DIR}/figs/{filename}.png")
+    plt.close()
+    print(f"Saved {filename}")
+    data = np.column_stack([t, r_train, r_test])
+    np.save(f"{cfg.RESULT_DIR}/data/{filename}.npy", data)
+
+
+    # 保存
+    filename = "W_out_spatiotemp"
+    np.save(f"{cfg.RESULT_DIR}/data/{filename}.npy", W_out)
+    print(f"Saved {filename}")
+
+def apply_calcium_filter(neural_data: np.ndarray, dt: float, tau: float = 0.8) -> np.ndarray:
+    """
+    ニューロン活動にカルシウム蛍光の減衰ダイナミクスを適用する
+    
+    Args:
+        neural_data (np.ndarray): 形状 (Time, Neurons) の時系列データ
+        dt (float): サンプリング間隔 [s] (例: cfg.INPUT_DT)
+        tau (float): カルシウム減衰時定数 [s] (論文再現なら 0.6 ~ 1.0 程度)
+        
+    Returns:
+        np.ndarray: フィルタ適用後のデータ
+    """
+    # 減衰係数の計算 ( alpha = exp(-dt/tau) )
+    alpha = np.exp(-dt / tau)
+    
+    # フィルタ係数の設定
+    # 数式: y[t] = alpha * y[t-1] + x[t]
+    # (入力 x があると急上昇し、ない間は alpha の倍率で減衰していく)
+    b = [1.0]           # 入力側の係数
+    a = [1.0, -alpha]   # 出力(自己回帰)側の係数
+    
+    # フィルタ適用 (axis=0 は時間方向)
+    filtered_data = lfilter(b, a, neural_data, axis=0)
+    
+    return filtered_data
+
+def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], save_dir: str, dt: float) -> None:
+    print("\nStarting Trajectory Analysis...")
+    
+    # データの前処理: 全トライアルで最小のデータ長に合わせる（時系列平均のため）
+    min_len = min([x.shape[0] for x in X_list])
+    X_truncated = [x[:min_len, :] for x in X_list]
+    
+    # 解析用にデータを結合 (Total_Time_Steps, Neurons)
+    X_concat = np.vstack(X_truncated)
+    
+    # (ニューロンごとのばらつきを正規化)
+    scaler = StandardScaler()
+    X_standardized_concat = scaler.fit_transform(X_concat)
+    
+    # トライアルごとの形に戻す (Num_Trials, Time, Neurons)
+    n_trials = len(X_truncated)
+    time_steps = min_len
+    n_neurons = X_truncated[0].shape[1]
+    X_reshaped = X_standardized_concat.reshape(n_trials, time_steps, n_neurons)
+    y_arr = np.array(y_list)
+
+    # ==========================================
+    # 1. PCA Analysis 
+    # ==========================================
+    pca = PCA(n_components=3)
+    X_pca_concat = pca.fit_transform(X_standardized_concat)
+    # (Num_Trials, Time, 3) に変形
+    X_pca = X_pca_concat.reshape(n_trials, time_steps, 3)
+    
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    # クラスごとに色を変えてプロット
+    # クラス0:赤, 1:緑, 2:青 (必要に応じて変更してください)
+    colors = ['r', 'g', 'b'] 
+    labels = ['Top', 'Middle', 'Bottom']
+    
+    # 凡例用に一度だけラベル付きでプロットするためのフラグ
+    plotted_labels = set()
+    
+    for i in range(n_trials):
+        label_idx = int(y_arr[i])
+        c = colors[label_idx % len(colors)]
+        l = labels[label_idx % len(labels)]
+        
+        if label_idx not in plotted_labels:
+            ax.plot(X_pca[i, :, 0], X_pca[i, :, 1], X_pca[i, :, 2], color=c, alpha=0.6, label=l)
+            plotted_labels.add(label_idx)
+        else:
+            ax.plot(X_pca[i, :, 0], X_pca[i, :, 1], X_pca[i, :, 2], color=c, alpha=0.6)
+            
+    ax.set_xlabel('PC1')
+    ax.set_ylabel('PC2')
+    ax.set_zlabel('PC3')
+    ax.set_title('Trajectories in PC Subspace')
+    ax.legend()
+    
+    save_path_pca = os.path.join(save_dir, "pca_trajectories.png")
+    plt.savefig(save_path_pca)
+    plt.close()
+    print(f"Saved PCA plot to {save_path_pca}")
+
+    # ==========================================
+    # 2. Distance Analysis (Fig 2D 相当)
+    # ==========================================
+    # Instantaneous normalized distance の計算
+    # d_pq(t) = (1 / sqrt(N)) * || p(t) - q(t) ||_2
+    
+    dist_same = []
+    dist_diff = []
+    
+    # 全ペアについて距離を計算
+    for i in range(n_trials):
+        for j in range(i + 1, n_trials):
+            # 時刻ごとのユークリッド距離を計算 (Time,)
+            diff = X_reshaped[i] - X_reshaped[j] 
+            # 論文式 (4) に基づき sqrt(N) で割って正規化
+            dist_t = np.linalg.norm(diff, axis=1) / np.sqrt(n_neurons)
+            
+            if y_arr[i] == y_arr[j]:
+                dist_same.append(dist_t)
+            else:
+                dist_diff.append(dist_t)
+                
+    dist_same = np.array(dist_same) # (Num_Same_Pairs, Time)
+    dist_diff = np.array(dist_diff) # (Num_Diff_Pairs, Time)
+    
+    # 平均と標準偏差を計算
+    mean_same = dist_same.mean(axis=0)
+    std_same = dist_same.std(axis=0)
+    
+    mean_diff = dist_diff.mean(axis=0)
+    std_diff = dist_diff.std(axis=0)
+    
+    # 時間軸の作成 (秒単位)
+    t_axis = np.arange(time_steps) * dt
+    
+    plt.figure(figsize=(8, 6))
+    
+    # Different inputs (Blue)
+    plt.plot(t_axis, mean_diff, label='Different inputs', color='blue')
+    plt.fill_between(t_axis, mean_diff - std_diff, mean_diff + std_diff, color='blue', alpha=0.2)
+    
+    # Same inputs (Red)
+    plt.plot(t_axis, mean_same, label='Same inputs', color='red')
+    plt.fill_between(t_axis, mean_same - std_same, mean_same + std_same, color='red', alpha=0.2)
+    
+    plt.xlabel('Time (s)')
+    plt.ylabel('Normalized distance')
+    plt.title('Instantaneous normalized distance')
+    plt.legend()
+    plt.grid(True, linestyle='--', alpha=0.6)
+    
+    save_path_dist = os.path.join(save_dir, "distance_analysis.png")
+    plt.savefig(save_path_dist)
+    plt.close()
+    print(f"Saved Distance plot to {save_path_dist}")
 
 # --- Pad sequences to T_max and flatten ---
 def pad_and_integrate(x, steps_per_trial):
@@ -495,195 +849,6 @@ def calc_r2(W_out: np.ndarray, X: np.ndarray, y: np.ndarray) -> float:
     r = corr_matrix[0, 1]
     r2 = r ** 2
     return r2
-
-def spatial_recognition(mode: str, num_of_cells: int = cfg.N, seed: int = cfg.SEED) -> None:
-    rng = np.random.RandomState(seed)
-    X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(mode, num_of_cells, rng)
-    steps_per_trial = X_train[0].shape[0]
-    X_train_flat = np.stack([pad_and_integrate(x, steps_per_trial) for x in X_train])
-    X_test_flat = np.stack([pad_and_integrate(x, steps_per_trial) for x in X_test])
-    del X_train
-    del X_test
-    gc.collect()
-
-    print("Train shape:", X_train_flat.shape)
-    print("Test  shape:", X_test_flat.shape)
-
-    # load_dataset_split の戻り値を受け取った直後あたりに追加
-    print("top feat mean:", X_train_flat[y_train == 0].mean(axis=0)[:10])
-    print("middle feat mean:", X_train_flat[y_train == 1].mean(axis=0)[40:50])
-    print("bottom feat mean:", X_train_flat[y_train == 2].mean(axis=0)[80:90])
-    print(
-        "difference norm:",
-        np.linalg.norm(
-            X_train_flat[y_train == 0].mean(axis=0) - X_train_flat[y_train == 1].mean(axis=0)
-        ),
-    )
-
-    print("Training readout...")
-    W_out = train_readout(X_train_flat, y_train, lambda_reg=1e-2)
-
-    # 精度評価
-    acc_train = evaluate(W_out, X_train_flat, y_train)
-    acc_test = evaluate(W_out, X_test_flat, y_test)
-    y_train_shuffled = rng.permutation(y_train)
-    W_out_shuffled = train_readout(X_train_flat, y_train_shuffled)
-    acc_test_shuffled = evaluate(W_out_shuffled, X_test_flat, y_test)
-    print(f"label shuffled test accuracy: {acc_test_shuffled}")
-
-    # --- Confusion Matrix ---
-    classes = np.unique(y_train)
-    num_classes = len(classes)
-    misclassified = []
-    conf = np.zeros((num_classes, num_classes), dtype=int)
-    for feat, true_label, path in zip(X_test_flat, y_test, X_test_paths):
-        pred_label = predict(W_out, feat)
-        conf[true_label, pred_label] += 1
-        if true_label != pred_label:
-            misclassified.append((path, true_label, pred_label))
-
-    print("\nConfusion Matrix (rows=True, cols=Pred):")
-    print(conf)
-    print(f"\nTrue TOP predicted as TOP: {conf[0,0]} / {conf[0].sum()}")
-    print(f"True MIDDLE predicted as MIDDLE:   {conf[1,1]} / {conf[1].sum()}")
-    print(f"True BOTTOM predicted as BOTTOM:   {conf[2,2]} / {conf[2].sum()}\n")
-
-    # --- Save confusion matrix as image ---
-
-    plt.figure(figsize=(4, 4))
-    plt.imshow(conf, cmap="Blues")
-    if args.mode == "linear":
-        plt.title(f"Confusion Matrix (Linear)")
-    else:
-        plt.title(f"Confusion Matrix, N = {num_of_cells}")
-    plt.xlabel("Predicted")
-    plt.ylabel("True")
-
-    # set axis ticks
-    # plt.xticks([0, 1], ["0", "1"])
-    # plt.yticks([0, 1], ["0", "1"])
-    plt.xticks([0, 1, 2], ["Top", "Middle", "Bottom"])
-    plt.yticks([0, 1, 2], ["Top", "Middle", "Bottom"])
-
-    # annotate cells
-    for i in range(num_classes):
-        for j in range(num_classes):
-            plt.text(
-                j,
-                i,
-                str(conf[i, j]),
-                ha="center",
-                va="center",
-                color="black",
-                fontsize=28,
-                fontweight="bold",
-            )
-
-    plt.colorbar()
-    plt.tight_layout()
-
-    # ================================================
-    # Save results
-    # ================================================
-    filename = "confusion_matrix_.png"
-    plt.savefig(f"{cfg.RESULT_DIR}/figs/{filename}")
-    plt.close()
-    print(f"Saved {filename}")
-
-    print(f"Train Accuracy: {acc_train * 100:.2f}%")
-    print(f"Test Accuracy:  {acc_test * 100:.2f}%")
-
-    # 保存
-    np.save(f"{cfg.OUTPUT_DIR}/W_out_space.npy", W_out)
-    np.save(f"{cfg.RESULT_DIR}/data/W_out_space.npy", W_out)
-    print("Saved W_out.npy")
-
-    print("\nMisclassified files:")
-    if len(misclassified) == 0:
-        print("  None! Perfect classification.")
-    else:
-        print(len(misclassified), "files misclassified.")
-        # for path, true_label, pred_label in misclassified:
-        #     print(f"  {path}  true={true_label}, pred={pred_label}")
-
-    result = {
-        "mode": args.mode,
-        "seed": seed,
-        "num_cells": num_of_cells,
-        "acc_train": acc_train,
-        "acc_test": acc_test,
-    }
-
-    with open(f"{cfg.BASE_DIR}/archive/results.jsonl", "a") as f:
-        f.write(json.dumps(result) + "\n")
-
-def delayed_space(mode: str, num_of_cells: int = cfg.N, seed: int = cfg.SEED) -> None:
-    rng = np.random.RandomState(seed)
-    X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(mode, num_of_cells, rng)
-    
-    steps_per_trial = X_train[0].shape[0]
-    if mode == "linear":
-        T_max = steps_per_trial * cfg.INPUT_DT
-    else:
-        T_max = steps_per_trial * cfg.DT
-
-    X_train_array = np.vstack([x for x in X_train])
-    X_test_array = np.vstack([x for x in X_test])
-    del X_train
-    del X_test
-    del X_test_paths
-    gc.collect()
-
-    print("Train shape:", X_train_array.shape)
-    print("Test  shape:", X_test_array.shape)
-
-    print("Training readout...")
-    duration = cfg.SPATIO_TEMP_DT
-    steps = int(T_max // duration)
-    t = np.zeros(steps)
-    r_train = np.zeros(steps)
-    r_test = np.zeros(steps)
-    for i in tqdm(np.arange(steps), desc="short term memory"):
-        delay = duration * i
-        Y_train_delayed = np.vstack([delay_answer(y, steps_per_trial, delay, mode) for y in y_train])
-        Y_test_delayed = np.vstack([delay_answer(y, steps_per_trial, delay, mode) for y in y_test])
-        W_out = train_readout(X_train_array, Y_train_delayed, lambda_reg=1e-2)
-        # 精度評価
-        t[i] = delay
-        r_train[i] = calc_r2(W_out, X_train_array, Y_train_delayed)
-        r_test[i] = calc_r2(W_out, X_test_array, Y_test_delayed)
-        del Y_train_delayed
-        del Y_test_delayed
-        if i != steps - 1:
-            del W_out
-        gc.collect()
-
-    # show graph
-    plt.figure(figsize=(8, 6)) 
-    plt.plot(t, r_train, label='train', linestyle='-', color='blue')
-    plt.plot(t, r_test, label='test', linestyle='-', color='orange')
-    plt.title("short term memory")
-    plt.xlabel(" τ [s] ")
-    plt.ylabel("r^2")
-    plt.legend()
-    plt.grid(True)
-
-
-    # ================================================
-    # Save results
-    # ================================================
-    filename = "short-term-memory"
-    plt.savefig(f"{cfg.RESULT_DIR}/figs/{filename}.png")
-    plt.close()
-    print(f"Saved {filename}")
-    data = np.column_stack([t, r_train, r_test])
-    np.save(f"{cfg.RESULT_DIR}/data/{filename}.npy", data)
-
-
-    # 保存
-    filename = "W_out_spatiotemp"
-    np.save(f"{cfg.RESULT_DIR}/data/{filename}.npy", W_out)
-    print(f"Saved {filename}")
 
 
 if __name__ == "__main__":
