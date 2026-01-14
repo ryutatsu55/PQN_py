@@ -701,6 +701,12 @@ def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], save_dir: 
     
     mean_diff = dist_diff.mean(axis=0)
     std_diff = dist_diff.std(axis=0)
+
+    lower_diff = mean_diff - std_diff
+    lower_same = mean_same - std_same
+
+    lower_diff = np.maximum(lower_diff, 0)
+    lower_same = np.maximum(lower_same, 0)
     
     # 時間軸の作成 (秒単位)
     t_axis = np.arange(time_steps) * dt
@@ -709,11 +715,11 @@ def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], save_dir: 
     
     # Different inputs (Blue)
     plt.plot(t_axis, mean_diff, label='Different inputs', color='blue')
-    plt.fill_between(t_axis, mean_diff - std_diff, mean_diff + std_diff, color='blue', alpha=0.2)
+    plt.fill_between(t_axis, lower_diff, mean_diff + std_diff, color='blue', alpha=0.2)
     
     # Same inputs (Red)
     plt.plot(t_axis, mean_same, label='Same inputs', color='red')
-    plt.fill_between(t_axis, mean_same - std_same, mean_same + std_same, color='red', alpha=0.2)
+    plt.fill_between(t_axis, lower_same, mean_same + std_same, color='red', alpha=0.2)
     
     plt.xlabel('Time (s)')
     plt.ylabel('Normalized distance')

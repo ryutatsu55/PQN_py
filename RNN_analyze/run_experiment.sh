@@ -78,13 +78,18 @@ else
     log_warn "設定ファイル (${CONFIG_SRC}) が見つかりません。バックアップをスキップします。"
 fi
 
-# Step 1: データ生成
-section_header "Step 1: Input Data Generation"
+# Step 1: 相関行列の解析
+section_header "Step 1: Analyzing Correlation Matrix"
+log_info "Running corr_neuron.py..."
+${PYTHON_EXEC} ${BASE_DIR}/corr_neuron.py
+
+# Step 2: データ生成
+section_header "Step 2: Input Data Generation"
 log_info "Running make_spatial_input.py..."
 ${PYTHON_EXEC} ${BASE_DIR}/make_spatial_input.py
 
-# Step 2: 空間認識 (SNNモード)
-section_header "Step 2: Spatial Recognition (SNN Mode)"
+# Step 3: 空間認識 (SNNモード)
+section_header "Step 3: Spatial Recognition (SNN Mode)"
 log_info "Running recognition_test.py..."
 # tqdmの表示が崩れないようにPYTHONUNBUFFERED=1をつけるのがコツ
 PYTHONUNBUFFERED=1 ${PYTHON_EXEC} ${BASE_DIR}/recognition_test.py \

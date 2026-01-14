@@ -11,11 +11,11 @@ class Config:
     SPATIO_TEMP_DT = 0.01    # タイムステップ [s] (時空間認識タスク用)
     # --- 入力データ生成設定(空間認識) ---
     DURATION_STIM = 0.1           # 刺激時間 [s]
-    DURATION_INTERVAL = 2.5       # 1試行の長さ [s] (spatial task)
+    DURATION_INTERVAL = 1.5       # 1試行の長さ [s] (spatial task)
     INPUT_STRENGTH = 1.0          # 入力強度
     
     N_TRAIN = 20                 # 学習データ数
-    N_TEST = 10                  # テストデータ数
+    N_TEST = 20                  # テストデータ数
     # 14 / 6 for spoken digit
     
     # --- ディレクトリパス設定 ---
@@ -25,7 +25,7 @@ class Config:
     RESULT_DIR = os.path.join(BASE_DIR, "result")
     
     # --- リザバー結合パラメータ ---
-    RESERVOIR_CONN = 0.5    # 結合強度係数 (元のコードの * 0.02)
+    RESERVOIR_CONN = 700    # 結合強度係数 (元のコードの * 0.02)
     READOUT_NODES = 60            # 読み出し層のノード数
 
     SPONTANEOUS_FREQ = 0.1
@@ -74,7 +74,7 @@ def create_moduled_matrix(N, rng):
     resovoir_weight = np.zeros((N, N))
     block_size = N // 4
     crust_idx = 0
-    G = 2.0
+    G = 0.5
     p = 0.05
     offset = 1.0
     while crust_idx != 4:
@@ -106,7 +106,7 @@ def create_moduled_matrix(N, rng):
 
     # クラスター間の接続
     M = 4
-    G = 2.0
+    G = 0.5
     p = 0.01
     offset = 1.0
     for hoge in range(M):
@@ -194,14 +194,14 @@ def synapses_init(resovoir_weight, N, N_S):
     tau_rec = np.full(N_S, 0.5, dtype=np.float32)
     tau_inact = np.full(N_S, 0.3, dtype=np.float32)
     tau_faci = np.full(N_S, 0.53, dtype=np.float32)
-    U1 = np.full(N_S, 0.005, dtype=np.float32)
-    U = np.full(N_S, 0.05, dtype=np.float32)
+    U1 = np.full(N_S, 0.05, dtype=np.float32)
+    U = np.full(N_S, 0.1, dtype=np.float32)
     mask_faci = np.zeros(N_S, dtype=np.uint8)
     col_indices, row_indices = np.where(resovoir_weight.T != 0)
     for i in range(N_S):
         r = row_indices[i]
         c = col_indices[i]
-        if r % (N // 4) > N // 5:
+        if resovoir_weight[r, c] < 0:
             mask_faci[i] = 1
             U[i] = 0
             tau_rec[i] = 0.1
@@ -229,9 +229,9 @@ def calc_init(resovoir_weight, N, N_S):
 
 
 def delay_init(resovoir_weight, N, N_S, mask, rng):
-    # delays = rng.randint(100, 700, size=(N,N))
+    delays = rng.randint(100, 1000, size=(N,N))
     # delays = np.full((N, N), 1000, dtype=np.int32)
-    delays = (40 + 60 * rng.rand(N, N)).astype(np.int32)  # 平均4ms 標準偏差0.75ms
+    # delays = (40 + 60 * rng.rand(N, N)).astype(np.int32)  # 平均4ms 標準偏差0.75ms
     delays = delays * (mask != 0)
     delay_row = np.zeros(N_S, dtype=np.int32)
     col_indices, row_indices = np.where(resovoir_weight.T != 0)

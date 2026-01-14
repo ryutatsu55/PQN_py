@@ -18,7 +18,7 @@ from src.PQN import PQNparam
 # -------------------------------------------------------------
 # 1. 外部の .cu ファイルを読み込んで文字列として取得
 # -------------------------------------------------------------
-with open("my_kernel.cu", "r", encoding="utf-8") as f:
+with open("RNN_analyze/src/my_kernel.cu", "r", encoding="utf-8") as f:
     my_kernel_code = f.read()
 
 # CuPyのRawKernelとしてカーネルをコンパイル
@@ -414,7 +414,7 @@ class PQN_Reservoir_GPU:
         results = {}
         # if record:
         results["rasters"] = self.raster_log
-        results["input"] = self.I_input_log
+        results["input"] = np.abs(self.I_input_log)
         results["v"] = self.v_log
         
         return results
