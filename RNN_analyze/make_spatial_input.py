@@ -2,6 +2,8 @@ import numpy as np
 import random
 import os
 import shutil
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 import RNN_config
 
 cfg = RNN_config.Config

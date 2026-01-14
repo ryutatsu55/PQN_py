@@ -5,8 +5,10 @@ from tqdm import tqdm
 import seaborn as sns
 
 # 自作モジュールのインポート
-import src.PQN_RNN_onGPU as PQN_RNN
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 import RNN_config
+import src.PQN_RNN_onGPU as PQN_RNN
 
 def analyze():
     # ==========================================

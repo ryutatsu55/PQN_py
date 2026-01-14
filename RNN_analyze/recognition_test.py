@@ -15,8 +15,10 @@ from sklearn.preprocessing import StandardScaler
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.signal import lfilter
 
-import src.PQN_RNN_onGPU as PQN_RNN_onGPU
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 import RNN_config
+import src.PQN_RNN_onGPU as PQN_RNN_onGPU
 
 cfg = RNN_config.Config
 

@@ -13,8 +13,8 @@ def get_file_hash(filepath):
     return hasher.hexdigest()
 
 # ディレクトリ設定
-train_dir = 'audio_rc/reservoir_inputs/train/coch_zero'
-test_dir  = 'audio_rc/reservoir_inputs/test/coch_zero'
+train_dir = 'audio_rc/reservoir_inputs/train'
+test_dir  = 'audio_rc/reservoir_inputs/test'
 
 print("ファイルの中身(ハッシュ値)を計算中...")
 
