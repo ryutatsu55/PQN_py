@@ -1,4 +1,4 @@
-{"mode": "snn", "seed": 0, "num_cells": 48, "acc_train": 1.0, "acc_test": 0.6852589641434262}
+{"mode": "snn", "seed": 0, "num_cells": 48, "acc_train": 1.0, "acc_test": 0.6892430278884463}
 {"mode": "snn", "seed": 1, "num_cells": 48, "acc_train": 1.0, "acc_test": 0.6055776892430279}
 {"mode": "snn", "seed": 2, "num_cells": 48, "acc_train": 1.0, "acc_test": 0.7689243027888446}
 {"mode": "snn", "seed": 3, "num_cells": 48, "acc_train": 1.0, "acc_test": 0.9840637450199203}
@@ -6,9 +6,9 @@
 {"mode": "snn", "seed": 5, "num_cells": 48, "acc_train": 1.0, "acc_test": 0.852589641434263}
 {"mode": "snn", "seed": 6, "num_cells": 48, "acc_train": 1.0, "acc_test": 0.8565737051792829}
 {"mode": "snn", "seed": 7, "num_cells": 48, "acc_train": 1.0, "acc_test": 0.7051792828685259}
-{"mode": "snn", "seed": 8, "num_cells": 48, "acc_train": 1.0, "acc_test": 0.8685258964143426}
+{"mode": "snn", "seed": 8, "num_cells": 48, "acc_train": 1.0, "acc_test": 0.8645418326693227}
 {"mode": "snn", "seed": 9, "num_cells": 48, "acc_train": 1.0, "acc_test": 0.8764940239043825}
-{"mode": "snn", "seed": 10, "num_cells": 48, "acc_train": 1.0, "acc_test": 0.7211155378486056}
+{"mode": "snn", "seed": 10, "num_cells": 48, "acc_train": 1.0, "acc_test": 0.7250996015936255}
 {"mode": "snn", "seed": 11, "num_cells": 48, "acc_train": 1.0, "acc_test": 0.8326693227091634}
 {"mode": "snn", "seed": 12, "num_cells": 48, "acc_train": 1.0, "acc_test": 0.8087649402390438}
 {"mode": "snn", "seed": 13, "num_cells": 48, "acc_train": 1.0, "acc_test": 0.9123505976095617}
@@ -23,7 +23,7 @@
 {"mode": "snn", "seed": 22, "num_cells": 48, "acc_train": 1.0, "acc_test": 0.9920318725099602}
 {"mode": "snn", "seed": 23, "num_cells": 48, "acc_train": 1.0, "acc_test": 0.9920318725099602}
 {"mode": "snn", "seed": 24, "num_cells": 48, "acc_train": 1.0, "acc_test": 0.796812749003984}
-{"mode": "snn", "seed": 25, "num_cells": 48, "acc_train": 1.0, "acc_test": 0.6972111553784861}
+{"mode": "snn", "seed": 25, "num_cells": 48, "acc_train": 1.0, "acc_test": 0.701195219123506}
 {"mode": "snn", "seed": 26, "num_cells": 48, "acc_train": 1.0, "acc_test": 0.9800796812749004}
 {"mode": "snn", "seed": 27, "num_cells": 48, "acc_train": 1.0, "acc_test": 0.9880478087649402}
 {"mode": "snn", "seed": 28, "num_cells": 48, "acc_train": 1.0, "acc_test": 0.749003984063745}
