@@ -307,7 +307,7 @@ def main(
         if record:
             v[i] = Vs_h
             # input[i] = I_input_h
-        rasters[i] = rasters[i] | spike_in_h
+        # rasters[i] = rasters[i] | spike_in_h
         # stream2.synchronize()
         # stream1.synchronize()
         # input[i] = x_d.get()
@@ -338,7 +338,7 @@ def main(
         plot_num += 1
 
         rasters_arranged = rasters[:, sorted_indices]
-        plot_raster(dt, tmax, rasters_arranged, N, output_dir, plot_num)
+        plot_raster(dt, tmax, rasters_arranged, output_dir, plot_num)
         plot_num += 1
 
     # plt.show()
@@ -641,7 +641,8 @@ def plot_single_neuron(tmax, v0, output_dir, num):
     plt.close()
 
 
-def plot_raster(dt, tmax, rasters, N, output_dir, num):
+def plot_raster(dt, tmax, rasters, output_dir, num):
+    N = rasters.shape[1]
     times, neuron_ids = np.nonzero(rasters)
     times = times * dt
     neuron_ids = neuron_ids  # Adjust neuron IDs to start from 1
