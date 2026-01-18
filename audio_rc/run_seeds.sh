@@ -27,7 +27,7 @@ else
     SEEDS=("${DEFAULT_SEEDS[@]}")
 fi
 
-LOGDIR="audio_rc/logs/run_seeds"
+LOGDIR="audio_rc/logs/run_seeds_LTS"
 mkdir -p "${LOGDIR}"
 
 for SEED in "${SEEDS[@]}"; do

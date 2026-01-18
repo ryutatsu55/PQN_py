@@ -400,7 +400,7 @@ def main_train(num_of_cells: int, seed: int) -> None:
         "acc_test": acc_test,
     }
 
-    with open("audio_rc/results/results_mf.jsonl", "a") as f:
+    with open("audio_rc/results/results_LTS.jsonl", "a") as f:
         f.write(json.dumps(result) + "\n")
 
 
