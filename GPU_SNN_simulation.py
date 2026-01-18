@@ -19,14 +19,6 @@ SEED = int(random.random() * 1000)
 random.seed(SEED)  # for reproducibility
 np.random.seed(SEED)
 
-# REC = True
-REC = False
-if REC:
-    DATE = time.strftime("%Y%m%d")
-    TIMESTAMP = time.strftime("%H%M")
-    OUTDIR = f"sim_results/{DATE}/{TIMESTAMP}_SEED{SEED}"
-    os.makedirs(OUTDIR, exist_ok=True)
-
 # -------------------------------------------------------------
 # 1. 外部の .cu ファイルを読み込んで文字列として取得
 # -------------------------------------------------------------
@@ -55,6 +47,7 @@ def main(
     density: float = 0.1,
     N: int = 500,
     record: bool = False,
+    output_dir = "graphs",
 ):
     """
     SNNシミュレーションのメイン関数
@@ -314,7 +307,7 @@ def main(
         if record:
             v[i] = Vs_h
             # input[i] = I_input_h
-        # rasters[i] = rasters[i] | spike_in_h
+        rasters[i] = rasters[i] | spike_in_h
         # stream2.synchronize()
         # stream1.synchronize()
         # input[i] = x_d.get()
@@ -332,10 +325,20 @@ def main(
     v = v / 2**cell.BIT_WIDTH_FRACTIONAL
     # ---- plot simulation result ----
     if record:
-        plot_single_neuron(0, dt, tmax, num_steps, input, v, plot_num, label)
+        os.makedirs(output_dir, exist_ok=True)
+
+        all_indices = set(range(N))
+        input_set = set(input_indices)
+        output_set = set(output_indices)
+        hidden_indices = list(all_indices - input_set - output_set)
+        hidden_indices.sort()
+        sorted_indices = list(input_indices) + hidden_indices + list(output_indices)
+        v_arranged = v[:, sorted_indices]
+        plot_single_neuron(tmax, v_arranged, output_dir, plot_num)
         plot_num += 1
 
-        plot_raster(dt, tmax, rasters, N, plot_num)
+        rasters_arranged = rasters[:, sorted_indices]
+        plot_raster(dt, tmax, rasters_arranged, N, output_dir, plot_num)
         plot_num += 1
 
     # plt.show()
@@ -615,53 +618,46 @@ def visualize_matrix(matrix, num):
     plt.tight_layout()
     save_path = os.path.join("graphs", "resovoir_weight_matrix.png")
     plt.savefig(save_path)
-    if REC:
-        save_path = os.path.join(OUTDIR, "resovoir_weight_matrix.png")
-        plt.savefig(save_path)
 
 
-def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, num, label):
-    fig = plt.figure(num=num, figsize=(10, 4))
-    spec = gridspec.GridSpec(
-        ncols=1, nrows=2, figure=fig, hspace=0.1, height_ratios=[1, 4]
-    )
-    ax0 = fig.add_subplot(spec[0])
-    ax1 = fig.add_subplot(spec[1])
-    ax0.set_xticks([])
-    ax0.plot([i * dt for i in range(0, number_of_iterations)], I[:, id], color="black")
-    ax0.set_xlim(0, tmax)
-    ax1.plot([i * dt for i in range(0, number_of_iterations)], v0[:, id])
-    ax1.set_xlim(0, tmax)
-    ax1.set_ylabel("v")
-    ax0.set_ylabel("I")
-    ax1.set_xlabel("[s]")
-    save_path = os.path.join("graphs", "single_neuron.png")
+def plot_single_neuron(tmax, v0, output_dir, num):
+    num_neurons = v0.shape[1]
+    
+    fig = plt.figure(num=num, figsize=(10, 6))
+    ax = fig.add_subplot(111)
+    im = ax.imshow(
+        v0.T, aspect='auto', origin='lower', 
+        extent=[0, tmax, 0, num_neurons], cmap='viridis',
+        vmin=-5, vmax=5)
+
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label("Membrane Potential (mV)")
+
+    ax.set_xlabel("Time [s]")
+    ax.set_ylabel("Neuron ID")
+    ax.set_title("Membrane Potential of All Neurons")
+    save_path = os.path.join(output_dir, "membrane_potential.png")
     plt.savefig(save_path)
-    if REC:
-        save_path = os.path.join(OUTDIR, f"single_neuron_{label}.png")
-        plt.savefig(save_path)
+    plt.close()
 
 
-def plot_raster(dt, tmax, rasters, N, num):
+def plot_raster(dt, tmax, rasters, N, output_dir, num):
     times, neuron_ids = np.nonzero(rasters)
     times = times * dt
     neuron_ids = neuron_ids  # Adjust neuron IDs to start from 1
-    cluster_colors = ["red", "blue", "green", "orange"]
-    cluster_id = (neuron_ids) // (N // 4)  # 0,1,2,3 のクラスタID
-    colors = [cluster_colors[c % 4] for c in cluster_id]
+    cluster_colors = ["red", "blue", "green"]
+    cluster_id = (neuron_ids) // 16  # 0,1,2 のクラスタID
+    colors = [cluster_colors[c % 3] for c in cluster_id]
     plt.figure(num=num, figsize=(9, 5))
-    plt.scatter(times, neuron_ids, s=0.1, color=colors)
+    plt.scatter(times, neuron_ids, s=1.0, color=colors)
     plt.xlabel("time")
     plt.xlim(0, tmax)
     plt.ylabel("neuron ID")
     plt.ylim(0, N)
     plt.title("Raster Plot")
     plt.tight_layout()
-    save_path = os.path.join("graphs", "raster.png")
+    save_path = os.path.join(output_dir, "raster.png")
     plt.savefig(save_path)
-    if REC:
-        save_path = os.path.join(OUTDIR, "raster.png")
-        plt.savefig(save_path)
 
 
 if __name__ == "__main__":
@@ -671,5 +667,5 @@ if __name__ == "__main__":
     # profiler.print_stats()
 
     coch = np.load("coch_zero.npy")
-    reservoir = init_reservoir(N=500, seed=123)
-    main(input_data=coch, reservoir_state=reservoir, label="cochleagram")
+    reservoir = init_reservoir(N=48, seed=123, input_size=16)
+    main(N=48, input_data=coch, reservoir_state=reservoir, label="cochleagram", record=True)
