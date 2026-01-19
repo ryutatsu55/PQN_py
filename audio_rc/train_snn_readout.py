@@ -1,4 +1,5 @@
 import json
+import os
 import numpy as np
 import glob
 import argparse
@@ -6,6 +7,8 @@ from datetime import datetime
 
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 
 import sys
 from pathlib import Path
@@ -244,6 +247,140 @@ def load_dataset_split(
     )
 
 
+def analyze_trajectories(
+    X_list: list[np.ndarray], y_list: list[int], save_dir: str, dt: float
+) -> None:
+    print("\nStarting Trajectory Analysis...")
+
+    # データの前処理: 全トライアルで最小のデータ長に合わせる（時系列平均のため）
+    min_len = min([x.shape[0] for x in X_list])
+    X_truncated = [x[:min_len, :] for x in X_list]
+
+    # 解析用にデータを結合 (Total_Time_Steps, Neurons)
+    X_concat = np.vstack(X_truncated)
+
+    # (ニューロンごとのばらつきを正規化)
+    scaler = StandardScaler()
+    X_standardized_concat = scaler.fit_transform(X_concat)
+
+    # トライアルごとの形に戻す (Num_Trials, Time, Neurons)
+    n_trials = len(X_truncated)
+    time_steps = min_len
+    n_neurons = X_truncated[0].shape[1]
+    X_reshaped = X_standardized_concat.reshape(n_trials, time_steps, n_neurons)
+    y_arr = np.array(y_list)
+
+    # ==========================================
+    # 1. PCA Analysis
+    # ==========================================
+    pca = PCA(n_components=3)
+    X_pca_concat = pca.fit_transform(X_standardized_concat)
+    # (Num_Trials, Time, 3) に変形
+    X_pca = X_pca_concat.reshape(n_trials, time_steps, 3)
+
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection="3d")
+
+    # クラスごとに色を変えてプロット
+    # クラス0:赤, 1:緑 (必要に応じて変更してください)
+    colors = ["r", "g"]
+    labels = ["Zero", "One"]
+
+    # 凡例用に一度だけラベル付きでプロットするためのフラグ
+    plotted_labels = set()
+
+    for i in range(n_trials):
+        label_idx = int(y_arr[i])
+        c = colors[label_idx % len(colors)]
+        l = labels[label_idx % len(labels)]
+
+        if label_idx not in plotted_labels:
+            ax.plot(
+                X_pca[i, :, 0],
+                X_pca[i, :, 1],
+                X_pca[i, :, 2],
+                color=c,
+                alpha=0.6,
+                label=l,
+            )
+            plotted_labels.add(label_idx)
+        else:
+            ax.plot(X_pca[i, :, 0], X_pca[i, :, 1], X_pca[i, :, 2], color=c, alpha=0.6)
+
+    ax.set_xlabel("PC1")
+    ax.set_ylabel("PC2")
+    ax.set_zlabel("PC3")
+    ax.set_title("Trajectories in PC Subspace")
+    ax.legend()
+
+    save_path_pca = os.path.join(save_dir, "pca_trajectories.png")
+    plt.savefig(save_path_pca)
+    plt.close()
+    print(f"Saved PCA plot to {save_path_pca}")
+
+    # ==========================================
+    # 2. Distance Analysis (Fig 2D 相当)
+    # ==========================================
+    # Instantaneous normalized distance の計算
+    # d_pq(t) = (1 / sqrt(N)) * || p(t) - q(t) ||_2
+
+    dist_same = []
+    dist_diff = []
+
+    # 全ペアについて距離を計算
+    for i in range(n_trials):
+        for j in range(i + 1, n_trials):
+            # 時刻ごとのユークリッド距離を計算 (Time,)
+            diff = X_reshaped[i] - X_reshaped[j]
+            # 論文式 (4) に基づき sqrt(N) で割って正規化
+            dist_t = np.linalg.norm(diff, axis=1) / np.sqrt(n_neurons)
+
+            if y_arr[i] == y_arr[j]:
+                dist_same.append(dist_t)
+            else:
+                dist_diff.append(dist_t)
+
+    dist_same = np.array(dist_same)  # (Num_Same_Pairs, Time)
+    dist_diff = np.array(dist_diff)  # (Num_Diff_Pairs, Time)
+
+    # 平均と標準偏差を計算
+    mean_same = dist_same.mean(axis=0)
+    std_same = dist_same.std(axis=0)
+
+    mean_diff = dist_diff.mean(axis=0)
+    std_diff = dist_diff.std(axis=0)
+
+    lower_diff = mean_diff - std_diff
+    lower_same = mean_same - std_same
+
+    lower_diff = np.maximum(lower_diff, 0)
+    lower_same = np.maximum(lower_same, 0)
+
+    # 時間軸の作成 (秒単位)
+    t_axis = np.arange(time_steps) * dt
+
+    plt.figure(figsize=(8, 6))
+
+    # Different inputs (Blue)
+    plt.plot(t_axis, mean_diff, label="Different inputs", color="blue")
+    plt.fill_between(t_axis, lower_diff, mean_diff + std_diff, color="blue", alpha=0.2)
+
+    # Same inputs (Red)
+    plt.plot(t_axis, mean_same, label="Same inputs", color="red")
+    plt.fill_between(t_axis, lower_same, mean_same + std_same, color="red", alpha=0.2)
+
+    plt.xlabel("Time (s)")
+    plt.ylabel("Normalized distance")
+    plt.title("Instantaneous normalized distance")
+    plt.legend()
+    plt.grid(True, linestyle="--", alpha=0.6)
+
+    save_path_dist = os.path.join(save_dir, "distance_analysis.png")
+    plt.savefig(save_path_dist)
+    plt.close()
+    print(f"Saved Distance plot to {save_path_dist}")
+
+
 # ================================
 # 2. 線形 readout の学習 (ridge regression)
 # ================================
@@ -299,6 +436,13 @@ def main_train(num_of_cells: int, seed: int) -> None:
     )
     print("Train shape:", X_train.shape)
     print("Test  shape:", X_test.shape)
+
+    analyze_trajectories(
+        X_train,
+        y_train,
+        save_dir=f"audio_rc/figs",
+        dt=0.0001,
+    )
 
     # load_dataset_split の戻り値を受け取った直後あたりに追加
     print("zero feat mean:", X_train[y_train == 0].mean(axis=0)[:10])
@@ -400,8 +544,8 @@ def main_train(num_of_cells: int, seed: int) -> None:
         "acc_test": acc_test,
     }
 
-    with open("audio_rc/results/results_LTS.jsonl", "a") as f:
-        f.write(json.dumps(result) + "\n")
+    # with open("audio_rc/results/results_LTS.jsonl", "a") as f:
+    #     f.write(json.dumps(result) + "\n")
 
 
 if __name__ == "__main__":

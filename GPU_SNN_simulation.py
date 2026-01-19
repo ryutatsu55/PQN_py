@@ -47,7 +47,7 @@ def main(
     density: float = 0.1,
     N: int = 500,
     record: bool = False,
-    output_dir = "graphs",
+    output_dir="graphs",
 ):
     """
     SNNシミュレーションのメイン関数
@@ -108,7 +108,7 @@ def main(
 
     # 3. ホスト側(CPU)でデータを準備
     # Use a single PQN neuron model for all neurons (no RSexci/RSinhi branching)
-    neuron_mode = "RSinhi"  # TODO: make this configurable (e.g., FS, LTS, ...)
+    neuron_mode = "RSexci"  # TODO: make this configurable (e.g., FS, LTS, ...)
     cell = PQNparam(mode=neuron_mode)
     cell_param_h = param_h_init(cell)
 
@@ -622,13 +622,18 @@ def visualize_matrix(matrix, num):
 
 def plot_single_neuron(tmax, v0, output_dir, num):
     num_neurons = v0.shape[1]
-    
+
     fig = plt.figure(num=num, figsize=(10, 6))
     ax = fig.add_subplot(111)
     im = ax.imshow(
-        v0.T, aspect='auto', origin='lower', 
-        extent=[0, tmax, 0, num_neurons], cmap='viridis',
-        vmin=-5, vmax=5)
+        v0.T,
+        aspect="auto",
+        origin="lower",
+        extent=[0, tmax, 0, num_neurons],
+        cmap="viridis",
+        vmin=-5,
+        vmax=5,
+    )
 
     cbar = plt.colorbar(im, ax=ax)
     cbar.set_label("Membrane Potential (mV)")
@@ -669,4 +674,10 @@ if __name__ == "__main__":
 
     coch = np.load("coch_zero.npy")
     reservoir = init_reservoir(N=48, seed=123, input_size=16)
-    main(N=48, input_data=coch, reservoir_state=reservoir, label="cochleagram", record=True)
+    main(
+        N=48,
+        input_data=coch,
+        reservoir_state=reservoir,
+        label="cochleagram",
+        record=True,
+    )
