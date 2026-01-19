@@ -442,8 +442,6 @@ def main(
     reservoir_state=None,
     return_feature: bool = True,
     is_debug_print: bool = False,
-    density: float = 0.1,
-    N: int = 500,
     record: bool = False,
     S_durt = 1e-2,
     cfg=None,

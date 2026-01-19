@@ -38,23 +38,23 @@ parser.add_argument(
 args = parser.parse_args()
 
 
-def main(num_of_cells: int = cfg.N, seed: int = cfg.SEED) -> None:
+def main() -> None:
     print(f"Mode: {args.mode}")
-    print(f"Number of reservoir cells: {num_of_cells}")
-    print(f"Random seed: {seed}")
+    print(f"Number of reservoir cells: {cfg.N}")
+    print(f"Random seed: {cfg.SEED}")
     if args.classifier == "space":
-        spatial_recognition(mode = args.mode, seed=seed)
+        spatial_recognition(mode = args.mode)
     elif args.classifier == "delayed_space":
-        delayed_space(mode = args.mode, seed=seed)
+        delayed_space(mode = args.mode)
     elif args.classifier == "both":
-        spatial_recognition(mode = args.mode, seed=seed)
-        delayed_space(mode = args.mode if args.mode == "linear" else "feature", seed=seed)
+        spatial_recognition(mode = args.mode)
+        delayed_space(mode = args.mode if args.mode == "linear" else "feature")
 
 # ================================
 # 1. データ読み込み関数
 # ================================
 def load_dataset_split(
-    mode: str, num_of_cells: int, rng
+    mode: str, rng
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[str]]:
     X_train, y_train = [], []
     X_test, y_test = [], []
@@ -93,7 +93,6 @@ def load_dataset_split(
                 reservoir_state=reservoir_state,
                 return_feature=True,
                 is_debug_print=False,
-                N=num_of_cells,
                 record = is_last_loop,
                 S_durt=cfg.INPUT_DT,
                 cfg=cfg,
@@ -119,7 +118,6 @@ def load_dataset_split(
                 reservoir_state=reservoir_state,
                 return_feature=True,
                 is_debug_print=False,
-                N=num_of_cells,
                 record = is_last_loop,
                 S_durt=cfg.INPUT_DT,
                 cfg=cfg,
@@ -145,7 +143,6 @@ def load_dataset_split(
                 reservoir_state=reservoir_state,
                 return_feature=True,
                 is_debug_print=False,
-                N=num_of_cells,
                 record = is_last_loop,
                 S_durt=cfg.INPUT_DT,
                 cfg=cfg,
@@ -227,7 +224,6 @@ def load_dataset_split(
                 reservoir_state=reservoir_state,
                 return_feature=True,
                 is_debug_print=False,
-                N=num_of_cells,
                 record=is_last_loop,
                 S_durt=cfg.INPUT_DT,
                 cfg=cfg,
@@ -254,7 +250,6 @@ def load_dataset_split(
                 reservoir_state=reservoir_state,
                 return_feature=True,
                 is_debug_print=False,
-                N=num_of_cells,
                 record=is_last_loop,
                 S_durt=cfg.INPUT_DT,
                 cfg=cfg,
@@ -281,7 +276,6 @@ def load_dataset_split(
                 reservoir_state=reservoir_state,
                 return_feature=True,
                 is_debug_print=False,
-                N=num_of_cells,
                 record=is_last_loop,
                 S_durt=cfg.INPUT_DT,
                 cfg=cfg,
@@ -375,10 +369,10 @@ def load_dataset_split(
         X_test_paths,
     )
 
-def spatial_recognition(mode: str, num_of_cells: int = cfg.N, seed: int = cfg.SEED) -> None:
-    rng = np.random.RandomState(seed)
+def spatial_recognition(mode: str) -> None:
+    rng = np.random.RandomState(cfg.SEED)
     print("\nLoading dataset...")
-    X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(mode, num_of_cells, rng)
+    X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(mode, rng)
     # print("Applying calcium response filter...")
     # tau_calcium = 0.8 
     
@@ -448,7 +442,7 @@ def spatial_recognition(mode: str, num_of_cells: int = cfg.N, seed: int = cfg.SE
     if args.mode == "linear":
         plt.title(f"Confusion Matrix (Linear)")
     else:
-        plt.title(f"Confusion Matrix, N = {num_of_cells}")
+        plt.title(f"Confusion Matrix, N = {cfg.N}")
     plt.xlabel("Predicted")
     plt.ylabel("True")
 
@@ -501,8 +495,8 @@ def spatial_recognition(mode: str, num_of_cells: int = cfg.N, seed: int = cfg.SE
 
     result = {
         "mode": args.mode,
-        "seed": seed,
-        "num_cells": num_of_cells,
+        "seed": cfg.SEED,
+        "num_cells": cfg.N,
         "acc_train": acc_train,
         "acc_test": acc_test,
     }
@@ -510,10 +504,10 @@ def spatial_recognition(mode: str, num_of_cells: int = cfg.N, seed: int = cfg.SE
     with open(f"{cfg.BASE_DIR}/archive/results.jsonl", "a") as f:
         f.write(json.dumps(result) + "\n")
 
-def delayed_space(mode: str, num_of_cells: int = cfg.N, seed: int = cfg.SEED) -> None:
-    rng = np.random.RandomState(seed)
+def delayed_space(mode: str) -> None:
+    rng = np.random.RandomState(cfg.SEED)
     print("\nLoading dataset...")
-    X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(mode, num_of_cells, rng)
+    X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(mode, rng)
     # print("Applying calcium response filter...")
     # tau_calcium = 0.8 
     
