@@ -224,24 +224,11 @@ def load_dataset_split(
     X_test = [X_test[i] for i in perm_test]
     y_test = [y_test[i] for i in perm_test]
 
-    # after loading X_train (list of (T, M))
-    Ts = [x.shape[0] for x in X_train]
-    T_fixed = int(np.median(Ts))  # ← まずこれ
-
-    def pad_and_flatten(x):
-        x = x[:T_fixed]
-        if x.shape[0] < T_fixed:
-            pad = np.zeros((T_fixed - x.shape[0], x.shape[1]), dtype=np.float32)
-            x = np.vstack([x, pad])
-        return x.reshape(-1)
-
-    X_train_flat = np.stack([pad_and_flatten(x) for x in X_train])
-    X_test_flat = np.stack([pad_and_flatten(x) for x in X_test])
 
     return (
-        X_train_flat,
+        X_train,
         np.array(y_train),
-        X_test_flat,
+        X_test,
         np.array(y_test),
         X_test_paths,
     )
@@ -251,6 +238,7 @@ def analyze_trajectories(
     X_list: list[np.ndarray], y_list: list[int], save_dir: str, dt: float
 ) -> None:
     print("\nStarting Trajectory Analysis...")
+    print(X_list)
 
     # データの前処理: 全トライアルで最小のデータ長に合わせる（時系列平均のため）
     min_len = min([x.shape[0] for x in X_list])
@@ -434,8 +422,6 @@ def main_train(num_of_cells: int, seed: int) -> None:
     X_train, y_train, X_test, y_test, X_test_paths = load_dataset_split(
         num_of_cells, seed
     )
-    print("Train shape:", X_train.shape)
-    print("Test  shape:", X_test.shape)
 
     analyze_trajectories(
         X_train,
@@ -443,6 +429,23 @@ def main_train(num_of_cells: int, seed: int) -> None:
         save_dir=f"audio_rc/figs",
         dt=0.0001,
     )
+    
+    # after loading X_train (list of (T, M))
+    Ts = [x.shape[0] for x in X_train]
+    T_fixed = int(np.median(Ts))  # ← まずこれ
+
+    def pad_and_flatten(x):
+        x = x[:T_fixed]
+        if x.shape[0] < T_fixed:
+            pad = np.zeros((T_fixed - x.shape[0], x.shape[1]), dtype=np.float32)
+            x = np.vstack([x, pad])
+        return x.reshape(-1)
+
+    X_train = np.stack([pad_and_flatten(x) for x in X_train])
+    X_test = np.stack([pad_and_flatten(x) for x in X_test])
+    
+    print("Train shape:", X_train.shape)
+    print("Test  shape:", X_test.shape)
 
     # load_dataset_split の戻り値を受け取った直後あたりに追加
     print("zero feat mean:", X_train[y_train == 0].mean(axis=0)[:10])
