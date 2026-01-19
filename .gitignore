@@ -114,4 +114,6 @@ RNN_analyze/reservoir_outputs/*
 RNN_analyze/result/*
 RNN_analyze/archive/*
 
+data/*
+
 .vscode/*
