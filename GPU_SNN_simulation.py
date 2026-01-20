@@ -58,8 +58,13 @@ def main(
             cochleagram or other time-series input.
     """
     # --- 初期設定 ---
+    # Use a single PQN neuron model for all neurons (no RSexci/RSinhi branching)
+    neuron_classes = ["RS_exci","RS_inhi","FS","EB","LTS","IB","PB","Class2"]
+    neuron_mode = "RSexci"  # TODO: make this configurable (e.g., FS, LTS, ...)
+    cell = PQNparam(mode=neuron_mode)
+    cell_param_h = param_h_init(cell)
     tmax = 10  # [s]
-    dt = 1e-4
+    dt = cell.PARAM['dt']
     S_durt = 8e-3  # 8[ms]
     # --- 外部入力がある場合はシミュレーション長とtmaxを調整 ---
     if input_data is not None:
@@ -108,15 +113,11 @@ def main(
     event_update_input = cuda.Event()
 
     # 3. ホスト側(CPU)でデータを準備
-    # Use a single PQN neuron model for all neurons (no RSexci/RSinhi branching)
-    neuron_mode = "RSexci"  # TODO: make this configurable (e.g., FS, LTS, ...)
-    cell = PQNparam(mode=neuron_mode)
-    cell_param_h = param_h_init(cell)
 
     Vs_h = np.full(N, cell.state_variable_v, dtype=np.int64)  # membrane potential
     Ns_h = np.full(N, cell.state_variable_n, dtype=np.int64)
     Qs_h = np.full(N, cell.state_variable_q, dtype=np.int64)
-    Us_h = np.full(N, getattr(cell, "state_variable_u", 0), dtype=np.int64)
+    Us_h = np.full(N, cell.state_variable_u, dtype=np.int64)
     raster_h = np.full(N, 0, dtype=np.uint8)
     spike_in_h = np.full(N, 0, dtype=np.uint8)
 
