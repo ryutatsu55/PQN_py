@@ -3,23 +3,28 @@
 // 全体のスレッド数
 extern "C"
 #include <stdint.h>
-    __constant__ int PQN_param[34];
+__constant__ int PQN_param[34];
 __constant__ float dt;
 __constant__ int buffer_size;
 __constant__ int num_neurons;
 __constant__ int num_synapses;
 
-__device__ int64_t v0(int64_t v, int64_t n, int64_t q, int64_t I, int64_t vv,
-                      const int* param);
+__device__ int64_t v0(int64_t v, int64_t n, int64_t q, int64_t I, int64_t vv, const int* param);
 __device__ int64_t n0(int64_t v, int64_t n, int64_t vv, const int* param);
 __device__ int64_t q0(int64_t v, int64_t q, int64_t vv, const int* param);
 __device__ int64_t u0(int64_t v, int64_t u, const int* param);
 
-__global__ void update_neuron_state(int64_t* Vs_d, int64_t* Ns_d, int64_t* Qs_d,
-                                    int64_t* Us_d, float* I_input,
-                                    float* synaptic_input,
-                                    unsigned char* last_spike,
-                                    unsigned char* raster, int current_step) {
+__global__ void update_neuron_state(
+  int64_t* Vs_d,
+  int64_t* Ns_d,
+  int64_t* Qs_d,
+  int64_t* Us_d, 
+  float* I_input,
+  float* synaptic_input,
+  unsigned char* last_spike,
+  unsigned char* raster,
+  int current_step
+) {
   // グローバルで一意なスレッドIDを計算
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -38,9 +43,9 @@ __global__ void update_neuron_state(int64_t* Vs_d, int64_t* Ns_d, int64_t* Qs_d,
     int64_t vv = (int64_t)((v * v) / (1LL << param[1]));
 
     // Base PQN updates (RS/FS/EB-compatible)
-    v += v0(v, n, q, I, vv, param);
+    int64_t dv = v0(v, n, q, I, vv, param);
     // PB: v-u coupling term (param[33] is 0 for non-PB modes)
-    v += ((int64_t)param[33] * u) >> param[0];
+    dv -= ((int64_t)param[33] * u) >> param[0];
 
     // n update
     int64_t dn = n0(v, n, vv, param);
@@ -52,33 +57,32 @@ __global__ void update_neuron_state(int64_t* Vs_d, int64_t* Ns_d, int64_t* Qs_d,
         dn = (dn * (int64_t)param[32]) >> param[0];
       }
     }
-    n += dn;
 
     // q update
-    q += q0(v, q, vv, param);
+    int64_t dq = q0(v, q, vv, param);
 
     // u update (enabled only when u params are set)
+    int64_t du = 0;
     if (param[27] != 0 || param[28] != 0 || param[29] != 0) {
-      u += u0(v, u, param);
+      du = u0(v, u, param);
     }
 
     // 計算結果をグローバルメモリに書き戻して、次の呼び出しに備える
-    Vs_d[tid] = v;
-    Ns_d[tid] = n;
-    Qs_d[tid] = q;
-    Us_d[tid] = u;
+    Vs_d[tid] = v + dv;
+    Ns_d[tid] = n + dn;
+    Qs_d[tid] = q + dq;
+    Us_d[tid] = u + du;
 
     int64_t threshold = (4 << param[1]);
     unsigned char current_spike = (v > threshold) ? 1 : 0;
     raster[tid] = (current_spike && !last_spike[tid]);
     // last_spike[tid] = last_spike[tid] | raster[tid];
     last_spike[tid] = current_spike;
-    synaptic_input[tid] = 0;
+    // synaptic_input[tid] = 0;
   }
 }
 
-__device__ int64_t v0(int64_t v, int64_t n, int64_t q, int64_t I, int64_t vv,
-                      const int* param) {
+__device__ int64_t v0(int64_t v, int64_t n, int64_t q, int64_t I, int64_t vv, const int* param) {
   int64_t v0;
   if (v < 0) {
     v0 = ((param[2] * vv) >> param[0]) + ((param[3] * v) >> param[0]) +
@@ -113,7 +117,6 @@ __device__ int64_t q0(int64_t v, int64_t q, int64_t vv, const int* param) {
   }
   return q0;
 }
-
 __device__ int64_t u0(int64_t v, int64_t u, const int* param) {
   // Indices (extended params):
   // 27: u_v, 28: u_u, 29: u_c
@@ -124,9 +127,10 @@ __device__ int64_t u0(int64_t v, int64_t u, const int* param) {
   return du;
 }
 
-__global__ void copy_arrival_spike(unsigned char* arrival_spike,
-                                   const unsigned char* delayed_spikes,
-                                   int read_idx  // i%buffur_size
+__global__ void copy_arrival_spike(
+  unsigned char* arrival_spike,
+  const unsigned char* delayed_spikes,
+  int read_idx  // i%buffur_size
 ) {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid < num_synapses) {
@@ -137,9 +141,11 @@ __global__ void copy_arrival_spike(unsigned char* arrival_spike,
 __global__ void propagate_spikes(
     unsigned char* delayed_spikes,  // [in/out] 遅延バッファ
     const unsigned char* raster,    // [in] 全時間ステップのスパイク情報
-    const unsigned char* spike_in, const int* which_neuron,
+    const unsigned char* spike_in, 
+    const int* which_neuron,
     const int* delay_row,  // [in] 遅延バッファの書き込み行
-    int read_idx) {
+    int read_idx
+  ) {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid < num_synapses) {
     int neuron_id = which_neuron[tid];
@@ -149,12 +155,23 @@ __global__ void propagate_spikes(
   }
 }
 
-__global__ void synapses_calc(float* x, float* y, float* z, float* r, float* hr,
-                              const unsigned char* delayed_spikes,
-                              const unsigned char* mask_faci,
-                              const float* tau_rec, const float* tau_inact,
-                              const float* tau_faci, const float* U1, float* U,
-                              float td, float tr, int read_idx) {
+__global__ void synapses_calc(
+    float* x, 
+    float* y, 
+    float* z, 
+    float* r, 
+    float* hr,
+    const unsigned char* delayed_spikes,
+    const unsigned char* mask_faci,
+    const float* tau_rec, 
+    const float* tau_inact,
+    const float* tau_faci, 
+    const float* U1, 
+    float* U,
+    float td, 
+    float tr, 
+    int read_idx
+  ) {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
   if (tid < num_synapses) {
@@ -194,8 +211,12 @@ __global__ void synapses_calc(float* x, float* y, float* z, float* r, float* hr,
   }
 }
 
-__global__ void mat_vec_mul(float* result, const int* neuron_to,
-                            const float* matrix, const float* vector) {
+__global__ void mat_vec_mul(
+    float* result, 
+    const int* neuron_to,
+    const float* matrix, 
+    const float* vector
+  ) {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
   if (tid < num_synapses) {

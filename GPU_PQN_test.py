@@ -55,6 +55,10 @@ def main():
     buffer_size = 1001
     plot_num = 0
 
+    v = np.zeros((num_steps, N))
+    buffer_size = 1001
+    plot_num = 0
+
     # PyCUDAでストリームとイベントを作成
     stream1 = cuda.Stream()
     stream2 = cuda.Stream()
@@ -62,35 +66,27 @@ def main():
     event_update_neuron = cuda.Event()
     event_update_input = cuda.Event()
 
-    # 3. ホスト側(CPU)でデータを準備    
-    neuron_type_h = np.zeros(N, dtype=np.uint8)  # 各ニューロンのタイプ
-    Vs_h=np.zeros(N, dtype=np.int64)  # 各ニューロンの膜電位などの状態変数
-    Ns_h=np.zeros(N, dtype=np.int64)
-    Qs_h=np.zeros(N, dtype=np.int64)
-    raster_h=np.zeros(N, dtype=np.uint8)
-    spike_in_h = np.zeros(N, dtype=np.uint8)
+    # 3. ホスト側(CPU)でデータを準備
+    # Use a single PQN neuron model for all neurons (no RSexci/RSinhi branching)
+    neuron_classes = ["RSexci","RSinhi","FS","LTS","IB","EB","PB","Class2"]
+    neuron_mode = "FS"  # TODO: make this configurable (e.g., FS, LTS, ...)
+    cell = PQNparam(mode=neuron_mode)
+    cell_param_h = param_h_init(cell)
 
-    RSexci = PQNparam(mode='RSexci')
-    RSexci_param_h = param_h_init(RSexci)
-    Vs_h[0]=RSexci.state_variable_v
-    Ns_h[0]=RSexci.state_variable_n
-    Qs_h[0]=RSexci.state_variable_q
-    neuron_type_h[0] = 0
-    RSinhi = PQNparam(mode='RSinhi')
-    RSinhi_param_h = param_h_init(RSinhi)
-    Vs_h[1]=RSinhi.state_variable_v
-    Ns_h[1]=RSinhi.state_variable_n
-    Qs_h[1]=RSinhi.state_variable_q
-    neuron_type_h[1] = 1
+    Vs_h = np.full(N, cell.state_variable_v, dtype=np.int64)  # membrane potential
+    Ns_h = np.full(N, cell.state_variable_n, dtype=np.int64)
+    Qs_h = np.full(N, cell.state_variable_q, dtype=np.int64)
+    Us_h = np.full(N, cell.state_variable_u, dtype=np.int64)
+    raster_h = np.full(N, 0, dtype=np.uint8)
+    spike_in_h = np.full(N, 0, dtype=np.uint8)
+
 
     # 4. デバイス側(GPU)にメモリを確保し、データを転送
-    RSexci_param_d, RSexci_param_d_size = module.get_global("RSexci_param")
-    cuda.memcpy_htod(RSexci_param_d, RSexci_param_h)
-    RSinhi_param_d, RSinhi_param_d_size = module.get_global("RSinhi_param")
-    cuda.memcpy_htod(RSinhi_param_d, RSinhi_param_h)
+    PQN_param_d, PQN_param_d_size = module.get_global("PQN_param")
+    cuda.memcpy_htod(PQN_param_d, cell_param_h)
     # RSexci_param_d = gpuarray.to_gpu(RSexci_param_h)
     # RSinhi_param_d = gpuarray.to_gpu(RSinhi_param_h)
-    
+
     dt_float32 = np.float32(dt)
     dt_d, dt_d_size = module.get_global("dt")
     cuda.memcpy_htod(dt_d, dt_float32)
@@ -103,14 +99,22 @@ def main():
     n_d, n_d_size = module.get_global("num_neurons")
     cuda.memcpy_htod(n_d, n_int32)
 
-    neuron_type_d = gpuarray.to_gpu(neuron_type_h)
     Vs_d = gpuarray.to_gpu(Vs_h)
     Ns_d = gpuarray.to_gpu(Ns_h)
     Qs_d = gpuarray.to_gpu(Qs_h)
+    Us_d = gpuarray.to_gpu(Us_h)
 
+    synapses_out_d = gpuarray.zeros(N, dtype=np.float32)
     last_spike_d = gpuarray.zeros(N, dtype=np.uint8)
     raster_d = gpuarray.to_gpu(raster_h)
-    spike_in_d = gpuarray.to_gpu(spike_in_h)
+
+    # PyCUDAでストリームとイベントを作成
+    stream1 = cuda.Stream()
+    stream3 = cuda.Stream()
+    event_update_neuron = cuda.Event()
+
+    # 3. ホスト側(CPU)でデータを準備
+
     input_d = gpuarray.zeros(N, dtype=np.float32)
 
     # 5. カーネルの実行設定
@@ -122,7 +126,7 @@ def main():
     for i in tqdm(range(num_steps)):
 
         if ( 5000 < i & i < 15000 ):
-            input_h[i] = np.float32(0.09)
+            input_h[i] = np.float32(0.1)
         else:
             input_h[i] = np.float32(0.0)
         cuda.memcpy_htod(input_d.gpudata, input_h[i])
@@ -131,10 +135,9 @@ def main():
             Vs_d.gpudata,
             Ns_d.gpudata,
             Qs_d.gpudata,
-            neuron_type_d.gpudata,
-            RSexci_param_d.gpudata,
-            RSinhi_param_d.gpudata,
+            Us_d.gpudata,
             input_d.gpudata,
+            synapses_out_d.gpudata,
             last_spike_d.gpudata,
             raster_d.gpudata,
             np.int32(i),
@@ -155,7 +158,7 @@ def main():
     print(f"processing time for {tmax}s simulation mas {(end - start)} s when reservoir_size was {N}")
     print(f"SEED value was {SEED}")
 
-    v = v/2**RSexci.BIT_WIDTH_FRACTIONAL
+    v = v/2**cell.BIT_WIDTH_FRACTIONAL
     # ---- plot simulation result ----
     plot_single_neuron(0, dt, tmax, num_steps, input_h, v, plot_num)
     plot_num += 1
@@ -164,48 +167,91 @@ def main():
 
 
 def param_h_init(PQN):
-    if (PQN.mode in ['RSexci', 'RSinhi', 'FS', 'EB']):
-        param = np.zeros(27, dtype=np.int32)
-        param[0]=PQN.BIT_Y_SHIFT
-        param[1]=PQN.BIT_WIDTH_FRACTIONAL
-        param[2]=PQN.Y['v_vv_S']
-        param[3]=PQN.Y['v_v_S']
-        param[4]=PQN.Y['v_c_S']
-        param[5]=PQN.Y['v_n']
-        param[6]=PQN.Y['v_q']
-        param[7]=PQN.Y['v_I']
-        param[8]=PQN.Y['v_vv_L']
-        param[9]=PQN.Y['v_v_L']
-        param[10]=PQN.Y['v_c_L']
-        param[11]=PQN.Y['rg']
-        param[12]=PQN.Y['n_vv_S']
-        param[13]=PQN.Y['n_v_S']
-        param[14]=PQN.Y['n_c_S']
-        param[15]=PQN.Y['n_n']
-        param[16]=PQN.Y['n_vv_L']
-        param[17]=PQN.Y['n_v_L']
-        param[18]=PQN.Y['n_c_L']
-        param[19]=PQN.Y['rh']
-        param[20]=PQN.Y['q_vv_S']
-        param[21]=PQN.Y['q_v_S']
-        param[22]=PQN.Y['q_c_S']
-        param[23]=PQN.Y['q_q']
-        param[24]=PQN.Y['q_vv_L']
-        param[25]=PQN.Y['q_v_L']
-        param[26]=PQN.Y['q_c_L']
-        return param
-    elif (PQN.mode in ['LTS', 'IB']):
-        param = np.zeros(27, dtype=np.int32)
+    """Build a fixed-size (34) parameter vector for the CUDA kernel.
+
+    Layout:
+      0-26 : existing RS/FS/EB/LTS/IB/PB/Class2 parameters (as before)
+      27   : u_v
+      28   : u_u
+      29   : u_c
+      30   : ru
+      31   : n_uS (eta0)
+      32   : n_uL (eta1)
+      33   : v_u (PB only)
+
+    For modes that do not use these terms, the entries remain 0 so the CUDA
+    kernel behaves exactly like the old implementation.
+    """
+    param = np.zeros(34, dtype=np.int32)
+
+    # --- Common 0-26 mapping (works for RS/FS/EB/LTS/IB/PB) ---
+    if PQN.mode in ["RSexci", "RSinhi", "FS", "EB", "LTS", "IB", "PB"]:
+        param[0] = PQN.BIT_Y_SHIFT
+        param[1] = PQN.BIT_WIDTH_FRACTIONAL
+        param[2] = PQN.Y.get("v_vv_S", 0)
+        param[3] = PQN.Y.get("v_v_S", 0)
+        param[4] = PQN.Y.get("v_c_S", 0)
+        param[5] = PQN.Y.get("v_n", 0)
+        param[6] = PQN.Y.get("v_q", 0)
+        param[7] = PQN.Y.get("v_I", 0)
+        param[8] = PQN.Y.get("v_vv_L", 0)
+        param[9] = PQN.Y.get("v_v_L", 0)
+        param[10] = PQN.Y.get("v_c_L", 0)
+        param[11] = PQN.Y.get("rg", 0)
+        param[12] = PQN.Y.get("n_vv_S", 0)
+        param[13] = PQN.Y.get("n_v_S", 0)
+        param[14] = PQN.Y.get("n_c_S", 0)
+        param[15] = PQN.Y.get("n_n", 0)
+        param[16] = PQN.Y.get("n_vv_L", 0)
+        param[17] = PQN.Y.get("n_v_L", 0)
+        param[18] = PQN.Y.get("n_c_L", 0)
+        param[19] = PQN.Y.get("rh", 0)
+        param[20] = PQN.Y.get("q_vv_S", 0)
+        param[21] = PQN.Y.get("q_v_S", 0)
+        param[22] = PQN.Y.get("q_c_S", 0)
+        param[23] = PQN.Y.get("q_q", 0)
+        param[24] = PQN.Y.get("q_vv_L", 0)
+        param[25] = PQN.Y.get("q_v_L", 0)
+        param[26] = PQN.Y.get("q_c_L", 0)
+
+        # --- Extended u-related params (LTS/IB/PB) ---
+        # u dynamics (LTS/IB/PB)
+        param[27] = PQN.Y.get("u_v", 0)
+        param[28] = PQN.Y.get("u_u", 0)
+        param[29] = PQN.Y.get("u_c", 0)
+
+        # IB/LTS: n scaling by u threshold
+        param[30] = PQN.Y.get("ru", 0)
+        param[31] = PQN.Y.get("n_uS", 0)
+        param[32] = PQN.Y.get("n_uL", 0)
+
+        # PB: v-u coupling (already includes sign in PQN.Y['v_u'])
+        param[33] = PQN.Y.get("v_u", 0)
 
         return param
-    elif PQN.mode == 'PB':
-        param = np.zeros(27, dtype=np.int32)
 
+    elif PQN.mode == "Class2":
+        # Class2 doesn't have q or u terms; keep missing entries as 0
+        param[0] = PQN.BIT_Y_SHIFT
+        param[1] = PQN.BIT_WIDTH_FRACTIONAL
+        param[2] = PQN.Y.get("v_vv_S", 0)
+        param[3] = PQN.Y.get("v_v_S", 0)
+        param[4] = PQN.Y.get("v_c_S", 0)
+        param[5] = PQN.Y.get("v_n", 0)
+        param[7] = PQN.Y.get("v_I", 0)
+        param[8] = PQN.Y.get("v_vv_L", 0)
+        param[9] = PQN.Y.get("v_v_L", 0)
+        param[10] = PQN.Y.get("v_c_L", 0)
+        param[11] = PQN.Y.get("rg", 0)
+        param[12] = PQN.Y.get("n_vv_S", 0)
+        param[13] = PQN.Y.get("n_v_S", 0)
+        param[14] = PQN.Y.get("n_c_S", 0)
+        param[15] = PQN.Y.get("n_n", 0)
+        param[16] = PQN.Y.get("n_vv_L", 0)
+        param[17] = PQN.Y.get("n_v_L", 0)
+        param[18] = PQN.Y.get("n_c_L", 0)
         return param
-    elif PQN.mode == 'Class2':
-        param = np.zeros(27, dtype=np.int32)
 
-        return param
     else:
         raise ValueError("Invalid PQN mode")
 
