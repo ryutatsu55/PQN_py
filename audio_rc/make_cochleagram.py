@@ -4,6 +4,7 @@ import librosa
 from lyon.calc import LyonCalc
 from multiprocessing import Pool, cpu_count
 import os
+import shutil
 import numpy as np
 
 
@@ -259,6 +260,16 @@ if __name__ == "__main__":
         ("00", "zero"),
         ("01", "one"),
     ]
+    target_dir = "audio_rc/reservoir_inputs"
+
+    if os.path.exists(target_dir):
+        try:
+            shutil.rmtree(target_dir)
+            print(f"フォルダを削除しました: {target_dir}")
+        except OSError as e:
+            print(f"削除中にエラーが発生しました: {e}")
+    else:
+        print(f"フォルダが見つかりませんでした: {target_dir}")
 
     for folder in folders:
         for code, name in configs:

@@ -29,7 +29,7 @@ parser.add_argument(
     "--cells",
     "-c",
     type=int,
-    default=100,
+    default=48,
     help="number of reservoir cells (default: 100)",
 )
 parser.add_argument(
@@ -67,12 +67,19 @@ def load_dataset_split(
         reservoir_state = None
 
     # ----- TRAIN -----
+    base_dir = "audio_rc"
+    input_dir = "reservoir_inputs"
+    output_dir = "reservoir_outputs"
+    train_test = "train"
+    zero_input = f"{base_dir}/{input_dir}/{train_test}/coch_zero"
+    zero_output = f"{base_dir}/{output_dir}/{train_test}/features_zero"
+    one_input = f"{base_dir}/{input_dir}/{train_test}/coch_one"
+    one_output = f"{base_dir}/{output_dir}/{train_test}/features_one"
     if args.mode == "snn":
         # ZERO
-        for path in tqdm(
-            glob.glob("audio_rc/reservoir_inputs/train/coch_zero/*.npy"),
-            desc="TRAIN ZERO",
-        ):
+        file_list = glob.glob(f"{zero_input}/*.npy")
+        total_files = len(file_list)
+        for i, path in enumerate(tqdm(file_list, desc="TRAIN ZERO")):
             coch = np.load(path)
             feat = GPU_SNN_simulation.main(
                 input_data=coch,
@@ -81,15 +88,21 @@ def load_dataset_split(
                 return_feature=True,
                 is_debug_print=False,
                 N=num_of_cells,
+                record=True if i==total_files-1 else False,
+                save_dir=f"audio_rc/figs",
             )
             X_train.append(feat)
             y_train.append(0)
+            
+            filename = os.path.basename(path)  # ex: zero_01.npy
+            save_path = os.path.join(zero_output, filename)
+            if feat is not None:
+                np.save(save_path, feat)
 
         # ONE
-        for path in tqdm(
-            glob.glob("audio_rc/reservoir_inputs/train/coch_one/*.npy"),
-            desc="TRAIN ONE",
-        ):
+        file_list = glob.glob(f"{one_input}/*.npy")
+        total_files = len(file_list)
+        for i, path in enumerate(tqdm(file_list, desc="TRAIN ONE")):
             coch = np.load(path)
             feat = GPU_SNN_simulation.main(
                 input_data=coch,
@@ -98,13 +111,21 @@ def load_dataset_split(
                 return_feature=True,
                 is_debug_print=False,
                 N=num_of_cells,
+                record=True if i==total_files-1 else False,
+                save_dir=f"audio_rc/figs",
             )
             X_train.append(feat)
             y_train.append(1)
+            
+            filename = os.path.basename(path)  # ex: zero_01.npy
+            save_path = os.path.join(one_output, filename)
+            if feat is not None:
+                np.save(save_path, feat)
+
     elif args.mode == "feature":
         # ZERO features
         for path in tqdm(
-            glob.glob("audio_rc/reservoir_outputs/train/features_zero/*.npy"),
+            glob.glob(f"{zero_output}/*.npy"),
             desc="TRAIN ZERO",
         ):
             feat = np.load(path)
@@ -112,7 +133,7 @@ def load_dataset_split(
             y_train.append(0)
         # ONE features
         for path in tqdm(
-            glob.glob("audio_rc/reservoir_outputs/train/features_one/*.npy"),
+            glob.glob(f"{one_output}/*.npy"),
             desc="TRAIN ONE",
         ):
             feat = np.load(path)
@@ -121,7 +142,7 @@ def load_dataset_split(
     elif args.mode == "linear":
         # ZERO
         for path in tqdm(
-            glob.glob("audio_rc/reservoir_inputs/train/coch_zero/*.npy"),
+            glob.glob(f"{zero_input}/*.npy"),
             desc="TRAIN ZERO (linear)",
         ):
             coch = np.load(path)
@@ -130,7 +151,7 @@ def load_dataset_split(
 
         # ONE
         for path in tqdm(
-            glob.glob("audio_rc/reservoir_inputs/train/coch_one/*.npy"),
+            glob.glob(f"{one_input}/*.npy"),
             desc="TRAIN ONE (linear)",
         ):
             coch = np.load(path)
@@ -138,12 +159,16 @@ def load_dataset_split(
             y_train.append(1)
 
     # ----- TEST -----
+    train_test = "test"
+    zero_input = f"{base_dir}/{input_dir}/{train_test}/coch_zero"
+    zero_output = f"{base_dir}/{output_dir}/{train_test}/features_zero"
+    one_input = f"{base_dir}/{input_dir}/{train_test}/coch_one"
+    one_output = f"{base_dir}/{output_dir}/{train_test}/features_one"
     if args.mode == "snn":
         # ZERO
-        for path in tqdm(
-            glob.glob("audio_rc/reservoir_inputs/test/coch_zero/*.npy"),
-            desc="TEST ZERO",
-        ):
+        file_list = glob.glob(f"{zero_input}/*.npy")
+        total_files = len(file_list)
+        for i, path in enumerate(tqdm(file_list, desc="TEST ZERO")):
             coch = np.load(path)
             feat = GPU_SNN_simulation.main(
                 input_data=coch,
@@ -152,15 +177,22 @@ def load_dataset_split(
                 return_feature=True,
                 is_debug_print=False,
                 N=num_of_cells,
+                record=True if i==total_files-1 else False,
+                save_dir=f"audio_rc/figs",
             )
             X_test.append(feat)
             y_test.append(0)
             X_test_paths.append(path)
+            
+            filename = os.path.basename(path)  # ex: zero_01.npy
+            save_path = os.path.join(zero_output, filename)
+            if feat is not None:
+                np.save(save_path, feat)
 
         # ONE
-        for path in tqdm(
-            glob.glob("audio_rc/reservoir_inputs/test/coch_one/*.npy"), desc="TEST ONE"
-        ):
+        file_list = glob.glob(f"{one_input}/*.npy")
+        total_files = len(file_list)
+        for i, path in enumerate(tqdm(file_list, desc="TEST ONE")):
             coch = np.load(path)
             feat = GPU_SNN_simulation.main(
                 input_data=coch,
@@ -169,14 +201,22 @@ def load_dataset_split(
                 return_feature=True,
                 is_debug_print=False,
                 N=num_of_cells,
+                record=True if i==total_files-1 else False,
+                save_dir=f"audio_rc/figs",
             )
             X_test.append(feat)
             y_test.append(1)
             X_test_paths.append(path)
+            
+            filename = os.path.basename(path)  # ex: zero_01.npy
+            save_path = os.path.join(one_output, filename)
+            if feat is not None:
+                np.save(save_path, feat)
+
     elif args.mode == "feature":
         # ZERO features
         for path in tqdm(
-            glob.glob("audio_rc/reservoir_outputs/test/features_zero/*.npy"),
+            glob.glob(f"{zero_output}/*.npy"),
             desc="TEST ZERO",
         ):
             feat = np.load(path)
@@ -185,7 +225,7 @@ def load_dataset_split(
             X_test_paths.append(path)
         # ONE features
         for path in tqdm(
-            glob.glob("audio_rc/reservoir_outputs/test/features_one/*.npy"),
+            glob.glob(f"{one_output}/*.npy"),
             desc="TEST ONE",
         ):
             feat = np.load(path)
@@ -195,7 +235,7 @@ def load_dataset_split(
     elif args.mode == "linear":
         # ZERO
         for path in tqdm(
-            glob.glob("audio_rc/reservoir_inputs/test/coch_zero/*.npy"),
+            glob.glob(f"{zero_input}/*.npy"),
             desc="TEST ZERO (linear)",
         ):
             coch = np.load(path)
@@ -205,7 +245,7 @@ def load_dataset_split(
 
         # ONE
         for path in tqdm(
-            glob.glob("audio_rc/reservoir_inputs/test/coch_one/*.npy"),
+            glob.glob(f"{one_input}/*.npy"),
             desc="TEST ONE (linear)",
         ):
             coch = np.load(path)
@@ -238,7 +278,7 @@ def analyze_trajectories(
     X_list: list[np.ndarray], y_list: list[int], save_dir: str, dt: float
 ) -> None:
     print("\nStarting Trajectory Analysis...")
-    print(X_list)
+    # print(X_list)
 
     # データの前処理: 全トライアルで最小のデータ長に合わせる（時系列平均のため）
     min_len = min([x.shape[0] for x in X_list])

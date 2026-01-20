@@ -11,6 +11,7 @@ import random
 from line_profiler import LineProfiler
 import time
 import os
+import pandas as pd
 from src.PQN import PQNparam
 
 
@@ -47,7 +48,7 @@ def main(
     density: float = 0.1,
     N: int = 500,
     record: bool = False,
-    output_dir="graphs",
+    save_dir="graphs",
 ):
     """
     SNNシミュレーションのメイン関数
@@ -325,7 +326,7 @@ def main(
     v = v / 2**cell.BIT_WIDTH_FRACTIONAL
     # ---- plot simulation result ----
     if record:
-        os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(save_dir, exist_ok=True)
 
         all_indices = set(range(N))
         input_set = set(input_indices)
@@ -334,11 +335,11 @@ def main(
         hidden_indices.sort()
         sorted_indices = list(input_indices) + hidden_indices + list(output_indices)
         v_arranged = v[:, sorted_indices]
-        plot_single_neuron(tmax, v_arranged, output_dir, plot_num)
+        plot_single_neuron(tmax, v_arranged, save_dir, plot_num)
         plot_num += 1
 
         rasters_arranged = rasters[:, sorted_indices]
-        plot_raster(dt, tmax, rasters_arranged, output_dir, plot_num)
+        plot_raster(dt, tmax, rasters_arranged, save_dir, plot_num)
         plot_num += 1
 
     # plt.show()
@@ -620,7 +621,11 @@ def visualize_matrix(matrix, num):
     plt.savefig(save_path)
 
 
-def plot_single_neuron(tmax, v0, output_dir, num):
+def plot_single_neuron(tmax, v0, save_dir, num):
+    matrix_csv_path = os.path.join(save_dir, "membrane_potential.csv")
+    np.savetxt(matrix_csv_path, v0, delimiter=",")
+    # print(f"Matrix CSV Saved: {matrix_csv_path}")
+
     num_neurons = v0.shape[1]
 
     fig = plt.figure(num=num, figsize=(10, 6))
@@ -641,28 +646,36 @@ def plot_single_neuron(tmax, v0, output_dir, num):
     ax.set_xlabel("Time [s]")
     ax.set_ylabel("Neuron ID")
     ax.set_title("Membrane Potential of All Neurons")
-    save_path = os.path.join(output_dir, "membrane_potential.png")
+    save_path = os.path.join(save_dir, "membrane_potential.png")
     plt.savefig(save_path)
     plt.close()
 
 
-def plot_raster(dt, tmax, rasters, output_dir, num):
+def plot_raster(dt, tmax, rasters, save_dir, num):
     N = rasters.shape[1]
     times, neuron_ids = np.nonzero(rasters)
     times = times * dt
-    neuron_ids = neuron_ids  # Adjust neuron IDs to start from 1
+
+    df = pd.DataFrame({
+        'time': times,
+        'neuron_id': neuron_ids
+    })
+    csv_path = os.path.join(save_dir, "raster_data.csv")
+    df.to_csv(csv_path, index=False)
+    # print(f"CSV Saved: {csv_path}")
+
     cluster_colors = ["red", "blue", "green"]
     cluster_id = (neuron_ids) // 16  # 0,1,2 のクラスタID
     colors = [cluster_colors[c % 3] for c in cluster_id]
     plt.figure(num=num, figsize=(9, 5))
-    plt.scatter(times, neuron_ids, s=1.0, color=colors)
+    plt.scatter(times, neuron_ids, s=2.0, color=colors)
     plt.xlabel("time")
     plt.xlim(0, tmax)
     plt.ylabel("neuron ID")
     plt.ylim(0, N)
     plt.title("Raster Plot")
     plt.tight_layout()
-    save_path = os.path.join(output_dir, "raster.png")
+    save_path = os.path.join(save_dir, "raster.png")
     plt.savefig(save_path)
 
 
