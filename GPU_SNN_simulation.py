@@ -9,6 +9,7 @@ from matplotlib import gridspec
 from tqdm import tqdm
 import random
 from line_profiler import LineProfiler
+import networkx as nx
 import time
 import os
 import pandas as pd
@@ -124,7 +125,7 @@ def main(
     # ---- 重み行列の作成 ----
     if reservoir_state is None:
         raise ValueError("reservoir_state must be provided.")
-    resovoir_weight = reservoir_state["resovoir_weight"]
+    reservoir_weight = reservoir_state["reservoir_weight"]
     mask = reservoir_state["mask"]
     type = reservoir_state["type"]
     N_S = reservoir_state["N_S"]
@@ -443,17 +444,17 @@ def param_h_init(PQN):
 
 
 def create_moduled_matrix(N):
-    resovoir_weight = np.zeros((N, N))
+    reservoir_weight = np.zeros((N, N))
     crust_idx = 0
     G = 0.1
     p = 0.05
     while crust_idx != 4:
         i1 = int(crust_idx * N / 4)
         i2 = int((crust_idx + 1) * N / 4)
-        resovoir_weight[i1:i2, i1:i2] = ((G * np.random.randn(N // 4, N // 4)) + 1) * (
+        reservoir_weight[i1:i2, i1:i2] = ((G * np.random.randn(N // 4, N // 4)) + 1) * (
             np.random.rand(N // 4, N // 4) < p
         )
-        # print(resovoir_weight[i1:i2, i1:i2])
+        # print(reservoir_weight[i1:i2, i1:i2])
         crust_idx += 1
 
     # クラスター間の接続
@@ -469,7 +470,7 @@ def create_moduled_matrix(N):
         j_range2 = int((hoge + 2) * N / 4)
         if j_range2 > N:
             j_range2 = j_range2 % N
-        resovoir_weight[i_range1:i_range2, j_range1:j_range2] = (
+        reservoir_weight[i_range1:i_range2, j_range1:j_range2] = (
             (G * np.random.randn(N // 4, N // 4)) + 1
         ) * (np.random.rand(N // 4, N // 4) < p)
 
@@ -481,7 +482,7 @@ def create_moduled_matrix(N):
         j_range2 = int((hoge + 1) * N / 4)
         if j_range2 > N:
             j_range2 = j_range2 % N
-        resovoir_weight[i_range1:i_range2, j_range1:j_range2] = (
+        reservoir_weight[i_range1:i_range2, j_range1:j_range2] = (
             (G * np.random.randn(N // 4, N // 4)) + 1
         ) * (np.random.rand(N // 4, N // 4) < p)
 
@@ -489,40 +490,40 @@ def create_moduled_matrix(N):
     base_mask = np.ones((N, int(N / 4)))
     base_mask[:, N // 5 :] = -1
     mask = np.hstack([base_mask for _ in range(4)])
-    resovoir_weight = resovoir_weight * mask
-    # resovoir_weight = np.zeros((N, N))#test
-    # resovoir_weight[0, 1] = 1       #test
+    reservoir_weight = reservoir_weight * mask
+    # reservoir_weight = np.zeros((N, N))#test
+    # reservoir_weight[0, 1] = 1       #test
     type = mask
-    mask = (resovoir_weight != 0) * mask
+    mask = (reservoir_weight != 0) * mask
 
-    return resovoir_weight, mask, type
+    return reservoir_weight, mask, type
 
 
 def create_random_matrix(N):
-    resovoir_weight = np.zeros((N, N))
+    reservoir_weight = np.zeros((N, N))
     G = 0.1
     p = 0.05
-    resovoir_weight = ((G * np.random.randn(N, N)) + 1) * (np.random.rand(N, N) < p)
+    reservoir_weight = ((G * np.random.randn(N, N)) + 1) * (np.random.rand(N, N) < p)
 
     # 抑制結合の設定
     mask = np.ones((N, N))
     mask[:, int(4 * N / 5) :] = -1
-    resovoir_weight = resovoir_weight * mask
-    # resovoir_weight = np.zeros((N, N))#test
-    # resovoir_weight[0, 1] = 1       #test
-    mask = (resovoir_weight != 0) * mask
+    reservoir_weight = reservoir_weight * mask
+    # reservoir_weight = np.zeros((N, N))#test
+    # reservoir_weight[0, 1] = 1       #test
+    mask = (reservoir_weight != 0) * mask
 
-    return resovoir_weight, mask
+    return reservoir_weight, mask
 
 
-def synapses_init(resovoir_weight, N, N_S):
+def synapses_init(reservoir_weight, N, N_S):
     tau_rec = np.full(N_S, 0.2, dtype=np.float32)
     tau_inact = np.full(N_S, 0.003, dtype=np.float32)
     tau_faci = np.full(N_S, 0.53, dtype=np.float32)
     U1 = np.full(N_S, 0.3, dtype=np.float32)
     U = np.full(N_S, 0.5, dtype=np.float32)
     mask_faci = np.zeros(N_S, dtype=np.uint8)
-    col_indices, row_indices = np.where(resovoir_weight.T != 0)
+    col_indices, row_indices = np.where(reservoir_weight.T != 0)
     for i in range(N_S):
         r = row_indices[i]
         c = col_indices[i]
@@ -537,23 +538,23 @@ def synapses_init(resovoir_weight, N, N_S):
     return tau_rec, tau_inact, tau_faci, U1, U, mask_faci
 
 
-def calc_init(resovoir_weight, N, N_S):
+def calc_init(reservoir_weight, N, N_S):
     neuron_from = np.zeros(N_S, dtype=np.int32)
-    resovoir_weight_calc = np.zeros(N_S, dtype=np.float32)
-    # resovoir_weight_calc = np.zeros((N, N_S), dtype=np.float32)
+    reservoir_weight_calc = np.zeros(N_S, dtype=np.float32)
+    # reservoir_weight_calc = np.zeros((N, N_S), dtype=np.float32)
     neuron_to = np.zeros(N_S, dtype=np.int32)
-    col_indices, row_indices = np.where(resovoir_weight.T != 0)
+    col_indices, row_indices = np.where(reservoir_weight.T != 0)
     for i in range(N_S):
         r = row_indices[i]
         c = col_indices[i]
         neuron_from[i] = c
-        resovoir_weight_calc[i] = resovoir_weight[r, c]
-        # resovoir_weight_calc[r, i] = resovoir_weight[r, c]
+        reservoir_weight_calc[i] = reservoir_weight[r, c]
+        # reservoir_weight_calc[r, i] = reservoir_weight[r, c]
         neuron_to[i] = r
-    return neuron_from, resovoir_weight_calc, neuron_to
+    return neuron_from, reservoir_weight_calc, neuron_to
 
 
-def delay_init(resovoir_weight, N, N_S, mask):
+def delay_init(reservoir_weight, N, N_S, mask):
     # delays = np.random.randint(100, 700, size=(N,N))
     # delays = np.full((N, N), 1000, dtype=np.int32)
     delays = (40 + 7.5 * np.random.randn(N, N)).astype(
@@ -561,7 +562,7 @@ def delay_init(resovoir_weight, N, N_S, mask):
     )  # 平均4ms 標準偏差0.75ms
     delays = delays * (mask != 0)
     delay_row = np.zeros(N_S, dtype=np.int32)
-    col_indices, row_indices = np.where(resovoir_weight.T != 0)
+    col_indices, row_indices = np.where(reservoir_weight.T != 0)
     for i in range(N_S):
         r = row_indices[i]
         c = col_indices[i]
@@ -574,22 +575,25 @@ def delay_init(resovoir_weight, N, N_S, mask):
 def init_reservoir(N, seed, input_size):
     random.seed(seed)
     np.random.seed(seed)
-    resovoir_origin, mask, type = create_moduled_matrix(N)
-    resovoir_weight = np.copy(resovoir_origin) * 0.03
-    N_S = np.count_nonzero(resovoir_weight)
+    reservoir_origin, mask, type = create_moduled_matrix(N)
+    reservoir_weight = np.copy(reservoir_origin) * 0.03
+
+    N_S = np.count_nonzero(reservoir_weight)
     tau_rec_h, tau_inact_h, tau_faci_h, U1_h, U_h, mask_faci_h = synapses_init(
-        resovoir_weight, N, N_S
+        reservoir_weight, N, N_S
     )
-    neuron_from_h, calc_matrix_h, neuron_to_h = calc_init(resovoir_weight, N, N_S)
-    delayed_row_h = delay_init(resovoir_weight, N, N_S, mask)
+    neuron_from_h, calc_matrix_h, neuron_to_h = calc_init(reservoir_weight, N, N_S)
+    delayed_row_h = delay_init(reservoir_weight, N, N_S, mask)
 
     rng = np.random.default_rng(seed)
 
     input_indices = rng.choice(N, size=input_size, replace=False)
     remaining = np.setdiff1d(np.arange(N), input_indices)
     output_indices = rng.choice(remaining, size=input_size, replace=False)
+    visualize_matrix(reservoir_origin, 10)
+    visualize_network(reservoir_origin, input_indices, output_indices, 11)
     return {
-        "resovoir_weight": resovoir_weight,
+        "reservoir_weight": reservoir_weight,
         "mask": mask,
         "type": type,
         "N_S": N_S,
@@ -618,9 +622,91 @@ def visualize_matrix(matrix, num):
     plt.xlabel("Pre Neuron")
     plt.ylabel("Post Neuron")
     plt.tight_layout()
-    save_path = os.path.join("graphs", "resovoir_weight_matrix.png")
+    save_path = os.path.join("graphs", "reservoir_weight_matrix.png")
     plt.savefig(save_path)
+    save_path = os.path.join("graphs", "reservoir_weight.npy")
+    np.save(save_path, matrix)
 
+def visualize_network(reservoir_weight, input_indices, output_indices, num):
+    N = reservoir_weight.shape[0]
+    G = nx.DiGraph()
+    G.add_nodes_from(range(N))
+    for i in range(N):
+        for j in range(N):
+            w = reservoir_weight[i][j]
+            if w != 0:
+                G.add_edge(j, i, weight=w)  # j→i（pre→post）
+
+    for i in range(N):
+        if i in input_indices:
+            G.nodes[i]['subset'] = 0
+        elif i in output_indices:
+            G.nodes[i]['subset'] = 2
+        else:
+            G.nodes[i]['subset'] = 1
+    
+    straight_edges = []
+    straight_widths = []
+    straight_sizes = []
+    curved_edges = []
+    curved_widths = []
+    curved_sizes = []
+    for u, v, d in G.edges(data=True):
+        edge_widths = max(0.1, 5 * (abs(d['weight']) - 0.7))
+        arrow_size = 20*abs(d["weight"])
+        
+        if G.nodes[u]['subset'] == G.nodes[v]['subset']:
+            curved_edges.append((u, v))
+            curved_widths.append(edge_widths)
+            curved_sizes.append(arrow_size)
+        else:
+            straight_edges.append((u, v))
+            straight_widths.append(edge_widths)
+            straight_sizes.append(arrow_size)
+
+    #   ノード配置（円形 or 自動レイアウト） 
+    # pos = nx.spring_layout(G, seed=42)  # spring_layout / circular_layout / kamada_kawai_layout など
+    pos = nx.multipartite_layout(G, subset_key='subset')
+
+    input_set = set(input_indices)
+    output_set = set(output_indices)
+    nodes_list = list(G.nodes())
+    node_colors = []
+    for node in nodes_list:
+        if node in input_set:
+            node_colors.append('red')
+        elif node in output_set:
+            node_colors.append('green')
+        else:
+            node_colors.append('blue')
+
+    #   可視化 
+    plt.figure(num=num, figsize=(8, 11))
+    nx.draw_networkx_nodes(G, pos, node_size=200, node_color=node_colors)
+    nx.draw_networkx_edges(
+        G, pos, 
+        edgelist=straight_edges,
+        width=straight_widths, 
+        edge_color="blue", 
+        arrows=True, 
+        arrowstyle='-|>',
+        arrowsize = straight_sizes
+    )
+    nx.draw_networkx_edges(
+        G, pos, 
+        edgelist=curved_edges,
+        width=curved_widths, 
+        edge_color="blue", 
+        arrows=True, 
+        arrowstyle='-|>',
+        arrowsize = curved_sizes,
+        connectionstyle='arc3, rad=0.4'
+    )
+    plt.title("Reservoir Network Graph")
+    plt.axis('off')
+    plt.tight_layout()
+    plt.savefig("graphs/network.png")
+    # plt.show(block=False)
 
 def plot_single_neuron(tmax, v0, save_dir, num):
     matrix_csv_path = os.path.join(save_dir, "membrane_potential.csv")
@@ -686,12 +772,12 @@ if __name__ == "__main__":
     # profiler.runcall(main)
     # profiler.print_stats()
 
-    coch = np.load("coch_zero.npy")
+    # coch = np.load("coch_zero.npy")
     reservoir = init_reservoir(N=48, seed=123, input_size=16)
-    main(
-        N=48,
-        input_data=coch,
-        reservoir_state=reservoir,
-        label="cochleagram",
-        record=True,
-    )
+    # main(
+    #     N=48,
+    #     input_data=coch,
+    #     reservoir_state=reservoir,
+    #     label="cochleagram",
+    #     record=True,
+    # )
