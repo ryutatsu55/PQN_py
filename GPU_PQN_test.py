@@ -72,6 +72,7 @@ def main():
     neuron_mode = "FS"  # TODO: make this configurable (e.g., FS, LTS, ...)
     cell = PQNparam(mode=neuron_mode)
     cell_param_h = param_h_init(cell)
+    dt = cell.PARAM['dt']
 
     Vs_h = np.full(N, cell.state_variable_v, dtype=np.int64)  # membrane potential
     Ns_h = np.full(N, cell.state_variable_n, dtype=np.int64)
@@ -262,7 +263,6 @@ def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, num):
     ax1 = fig.add_subplot(spec[1])
     ax0.set_xticks([])
     ax0.plot([i*dt for i in range(0, number_of_iterations)], I[:,id], color="black")
-    ax0.set_xlim(0, tmax)
     ax1.plot([i*dt for i in range(0, number_of_iterations)], v0[:,id])    
     ax1.set_xlim(0, tmax)
     ax1.set_ylabel("v")
