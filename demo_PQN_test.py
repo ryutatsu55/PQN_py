@@ -37,18 +37,18 @@ def main():
     rasters[0] = 0
     output = np.zeros((number_of_iterations+int(0.5//dt), N), dtype=np.float32)  # synapse output [nA]
     next_input = np.zeros(N, dtype=np.float32)  # input for next time step [nA]
-    resovoir_weight = np.ones((N, N))
+    reservoir_weight = np.ones((N, N))
     num = 0
 
 
-    N_S = np.count_nonzero(resovoir_weight)
+    N_S = np.count_nonzero(reservoir_weight)
     synapses_out1 = tsodyks_markram(N_S, dt=dt, tau_rec=0.5, U=0.5)
     synapses_out1.mask_faci[0] = 1
     synapses_out1.U[0] = 0
     synapses_out1.tau_rec[0] = 0.1
     synapses_out1.tau_inact[0] = 0.0015
 
-    resovoir_weight_calc = resovoir_weight*temp/1000
+    reservoir_weight_calc = reservoir_weight*temp/1000
 
     # ---- RUN SIMULATION ----
     start = time.perf_counter()
@@ -57,7 +57,7 @@ def main():
         raster, v0[i] = cell0.calc(inputs=I[i], itr=i)  # update cell state
         rasters[i+10] = raster or rasters[i+10]  # store spike
         hoge = synapses_out1(rasters[i])  # update synapse state
-        next_input = np.dot(resovoir_weight_calc, hoge) # [nA]
+        next_input = np.dot(reservoir_weight_calc, hoge) # [nA]
         output[i] = next_input
     end = time.perf_counter()
 
@@ -78,7 +78,7 @@ def main():
     # np.savetxt(fname("I"), I, delimiter=",", header="input", comments="", fmt="%.9f",)
     # np.savetxt(fname("v"), v0, delimiter=",", header="v", comments="", fmt="%.9f",)
     # np.savetxt(fname("syn_output"), output, delimiter=",", header="syn_output", comments="", fmt="%.9f",)
-    # np.savetxt(fname("reservoir_weight"), resovoir_weight, delimiter=",", header="reservoir_weight", comments="", fmt="%.9f",)
+    # np.savetxt(fname("reservoir_weight"), reservoir_weight, delimiter=",", header="reservoir_weight", comments="", fmt="%.9f",)
     # # spikes_sparse = np.vstack((times, neuron_ids)).T
     # # np.savetxt(fname("spikes_sparse"), spikes_sparse, delimiter=",", header="time,neuron_id", comments="", fmt=["%.9f", "%d"],)
     # with open(fname("meta"), "w") as f:
@@ -100,15 +100,15 @@ def main():
 
 
 def create_reservoir_matrix(N):
-    resovoir_weight = np.zeros((N, N))
+    reservoir_weight = np.zeros((N, N))
     crust_idx = 0
     G = 0.1
     p = 0.05
     while crust_idx != 4:
         i1 = int(crust_idx * N / 4)
         i2 = int((crust_idx + 1) * N / 4)
-        resovoir_weight[i1:i2, i1:i2] = ((G * np.random.randn(N//4, N//4)) + 1) * (np.random.rand(N//4, N//4) < p)
-        # print(resovoir_weight[i1:i2, i1:i2])
+        reservoir_weight[i1:i2, i1:i2] = ((G * np.random.randn(N//4, N//4)) + 1) * (np.random.rand(N//4, N//4) < p)
+        # print(reservoir_weight[i1:i2, i1:i2])
         crust_idx += 1
 
     #クラスター間の接続
@@ -124,7 +124,7 @@ def create_reservoir_matrix(N):
         j_range2 = int((hoge+2)*N/4)
         if j_range2 > N:
             j_range2 = j_range2 % N
-        resovoir_weight[i_range1:i_range2, j_range1:j_range2] = ((G * np.random.randn(N//4, N//4)) + 1) * (np.random.rand(N//4, N//4) < p)
+        reservoir_weight[i_range1:i_range2, j_range1:j_range2] = ((G * np.random.randn(N//4, N//4)) + 1) * (np.random.rand(N//4, N//4) < p)
 
         i_range1 = int(((hoge+1)*N/4)%N)
         i_range2 = int((hoge+2)*N/4)
@@ -134,18 +134,18 @@ def create_reservoir_matrix(N):
         j_range2 = int((hoge+1)*N/4)
         if j_range2 > N:
             j_range2 = j_range2 % N
-        resovoir_weight[i_range1:i_range2, j_range1:j_range2] = ((G * np.random.randn(N//4, N//4)) + 1) * (np.random.rand(N//4, N//4) < p)
+        reservoir_weight[i_range1:i_range2, j_range1:j_range2] = ((G * np.random.randn(N//4, N//4)) + 1) * (np.random.rand(N//4, N//4) < p)
 
     # 抑制結合の設定
     base_mask = np.ones((N, int(N/4)))
     base_mask[:, N//5:] = -1
     mask = np.hstack([base_mask for _ in range(4)])
-    resovoir_weight = resovoir_weight * mask
-    # resovoir_weight = np.zeros((N, N))#test
-    # resovoir_weight[0, 1] = 1       #test
-    mask = (resovoir_weight != 0) * mask
+    reservoir_weight = reservoir_weight * mask
+    # reservoir_weight = np.zeros((N, N))#test
+    # reservoir_weight[0, 1] = 1       #test
+    mask = (reservoir_weight != 0) * mask
 
-    return resovoir_weight, mask
+    return reservoir_weight, mask
 
 def visualize_matrix(matrix, num):
     plt.figure(num=num, figsize=(8, 6))
@@ -157,13 +157,13 @@ def visualize_matrix(matrix, num):
     plt.xlabel('Pre Neuron')
     plt.ylabel('Post Neuron')
     plt.tight_layout()
-    plt.savefig("resovoir_weight_matrix.png")
+    plt.savefig("reservoir_weight_matrix.png")
 
-def show_network(resovoir_weight, N, SEED, num):
+def show_network(reservoir_weight, N, SEED, num):
     G = nx.DiGraph()
     for i in range(N):
         for j in range(N):
-            w = resovoir_weight[i][j]
+            w = reservoir_weight[i][j]
             if w != 0:
                 G.add_edge(j, i, weight=w)  # j→i（pre→post）
     pos = nx.spring_layout(G, seed=SEED)    #   ノード配置（円形 or 自動レイアウト） 

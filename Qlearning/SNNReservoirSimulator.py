@@ -59,14 +59,14 @@ class SNNReservoirSimulator:
 
         
         # ---- 重み行列の作成 ----
-        self.resovoir_origin, self.mask = self.create_moduled_matrix()
-        # self.resovoir_origin, self.mask = self.create_random_matrix(self.N)
-        self.resovoir_weight = np.copy(self.resovoir_origin)
-        self.resovoir_weight = self.resovoir_weight*0.003
-        # self.visualize_matrix(self.resovoir_origin, self.plot_num)
+        self.reservoir_weight, self.mask = self.create_moduled_matrix()
+        # self.reservoir_weight, self.mask = self.create_random_matrix(self.N)
+        self.reservoir_weight = np.copy(self.reservoir_weight)
+        self.reservoir_weight = self.reservoir_weight*0.003
+        # self.visualize_matrix(self.reservoir_weight, self.plot_num)
         self.plot_num += 1
 
-        self.N_S = np.count_nonzero(self.resovoir_weight)
+        self.N_S = np.count_nonzero(self.reservoir_weight)
 
         self.tau_rec_h = np.full(self.N_S, 0.2, dtype=np.float32)
         self.tau_inact_h = np.full(self.N_S, 0.003, dtype=np.float32)
@@ -331,15 +331,15 @@ class SNNReservoirSimulator:
         return param
 
     def create_moduled_matrix(self):
-        resovoir_weight = np.zeros((self.N, self.N))
+        reservoir_weight = np.zeros((self.N, self.N))
         crust_idx = 0
         G = 0.1
         p = 0.05
         while crust_idx != 4:
             i1 = int(crust_idx * self.N / 4)
             i2 = int((crust_idx + 1) * self.N / 4)
-            resovoir_weight[i1:i2, i1:i2] = ((G * np.random.randn(self.N//4, self.N//4)) + 1) * (np.random.rand(self.N//4, self.N//4) < p)
-            # print(resovoir_weight[i1:i2, i1:i2])
+            reservoir_weight[i1:i2, i1:i2] = ((G * np.random.randn(self.N//4, self.N//4)) + 1) * (np.random.rand(self.N//4, self.N//4) < p)
+            # print(reservoir_weight[i1:i2, i1:i2])
             crust_idx += 1
 
         #クラスター間の接続
@@ -355,7 +355,7 @@ class SNNReservoirSimulator:
             j_range2 = int((hoge+2)*self.N/4)
             if j_range2 > self.N:
                 j_range2 = j_range2 % self.N
-            resovoir_weight[i_range1:i_range2, j_range1:j_range2] = ((G * np.random.randn(self.N//4, self.N//4)) + 1) * (np.random.rand(self.N//4, self.N//4) < p)
+            reservoir_weight[i_range1:i_range2, j_range1:j_range2] = ((G * np.random.randn(self.N//4, self.N//4)) + 1) * (np.random.rand(self.N//4, self.N//4) < p)
 
             i_range1 = int(((hoge+1)*self.N/4)%self.N)
             i_range2 = int((hoge+2)*self.N/4)
@@ -365,37 +365,37 @@ class SNNReservoirSimulator:
             j_range2 = int((hoge+1)*self.N/4)
             if j_range2 > self.N:
                 j_range2 = j_range2 % self.N
-            resovoir_weight[i_range1:i_range2, j_range1:j_range2] = ((G * np.random.randn(self.N//4, self.N//4)) + 1) * (np.random.rand(self.N//4, self.N//4) < p)
+            reservoir_weight[i_range1:i_range2, j_range1:j_range2] = ((G * np.random.randn(self.N//4, self.N//4)) + 1) * (np.random.rand(self.N//4, self.N//4) < p)
 
         # 抑制結合の設定
         base_mask = np.ones((self.N, int(self.N/4)))
         base_mask[:, self.N//5:] = -1
         mask = np.hstack([base_mask for _ in range(4)])
-        resovoir_weight = resovoir_weight * mask
-        # resovoir_weight = np.zeros((N, N))#test
-        # resovoir_weight[0, 1] = 1       #test
-        mask = (resovoir_weight != 0) * mask
+        reservoir_weight = reservoir_weight * mask
+        # reservoir_weight = np.zeros((N, N))#test
+        # reservoir_weight[0, 1] = 1       #test
+        mask = (reservoir_weight != 0) * mask
 
-        return resovoir_weight, mask
+        return reservoir_weight, mask
 
     def create_random_matrix(self):
-        resovoir_weight = np.zeros((self.N, self.N))
+        reservoir_weight = np.zeros((self.N, self.N))
         G = 0.1
         p = 0.05
-        resovoir_weight = ((G * np.random.randn(self.N, self.N)) + 1) * (np.random.rand(self.N, self.N) < p)
+        reservoir_weight = ((G * np.random.randn(self.N, self.N)) + 1) * (np.random.rand(self.N, self.N) < p)
 
         # 抑制結合の設定
         mask = np.ones((self.N, self.N))
         mask[:, int(4*self.N/5):] = -1
-        resovoir_weight = resovoir_weight * mask
-        # resovoir_weight = np.zeros((N, N))#test
-        # resovoir_weight[0, 1] = 1       #test
-        mask = (resovoir_weight != 0) * mask
+        reservoir_weight = reservoir_weight * mask
+        # reservoir_weight = np.zeros((N, N))#test
+        # reservoir_weight[0, 1] = 1       #test
+        mask = (reservoir_weight != 0) * mask
 
-        return resovoir_weight, mask
+        return reservoir_weight, mask
 
     def synapses_init(self):
-        col_indices, row_indices = np.where(self.resovoir_weight.T != 0)
+        col_indices, row_indices = np.where(self.reservoir_weight.T != 0)
         for i in range(self.N_S):
             r = row_indices[i]
             c = col_indices[i]
@@ -409,12 +409,12 @@ class SNNReservoirSimulator:
             #     tau_rec[i] = 0.1
 
     def calc_init(self):
-        col_indices, row_indices = np.where(self.resovoir_weight.T != 0)
+        col_indices, row_indices = np.where(self.reservoir_weight.T != 0)
         for i in range(self.N_S):
             r = row_indices[i]
             c = col_indices[i]
             self.neuron_from[i] = c
-            self.resovoir_weight_calc[i] = self.resovoir_weight[r, c]
+            self.reservoir_weight_calc[i] = self.reservoir_weight[r, c]
             self.neuron_to[i] = r
 
     def delay_init(self):
@@ -423,7 +423,7 @@ class SNNReservoirSimulator:
         # delays = (40 + 7.5*np.random.randn(self.N, self.N)).astype(np.int32)
         delays = delays * (self.mask != 0)
         delay_row = np.zeros(self.N_S, dtype=np.int32)
-        col_indices, row_indices = np.where(self.resovoir_weight.T != 0)
+        col_indices, row_indices = np.where(self.reservoir_weight.T != 0)
         for i in range(self.N_S):
             r = row_indices[i]
             c = col_indices[i]
@@ -440,7 +440,7 @@ class SNNReservoirSimulator:
         plt.xlabel('Pre Neuron')
         plt.ylabel('Post Neuron')
         plt.tight_layout()
-        plt.savefig("resovoir_weight_matrix.png")
+        plt.savefig("reservoir_weight_matrix.png")
 
     def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, num):
         fig = plt.figure(num=num, figsize=(10,4))
