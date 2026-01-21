@@ -78,7 +78,7 @@ __global__ void update_neuron_state(
     raster[tid] = (current_spike && !last_spike[tid]);
     // last_spike[tid] = last_spike[tid] | raster[tid];
     last_spike[tid] = current_spike;
-    // synaptic_input[tid] = 0;
+    synaptic_input[tid] = 0;
   }
 }
 
