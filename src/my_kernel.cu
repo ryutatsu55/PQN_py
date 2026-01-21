@@ -2,8 +2,13 @@
 // num_threads: 全体のスレッド数
 extern "C"
 #include <stdint.h>
-__constant__ int RSexci_param[27];
-__constant__ int RSinhi_param[27];
+__constant__ int RSexci_param[34];
+__constant__ int RSinhi_param[34];
+__constant__ int FS_param[34];
+__constant__ int LTS_param[34];
+__constant__ int IB_param[34];
+__constant__ int EB_param[34];
+__constant__ int PB_param[34];
 __constant__ float dt;
 __constant__ int buffer_size;
 __constant__ int num_neurons;
@@ -12,11 +17,13 @@ __constant__ int num_synapses;
 __device__ int64_t v0(int64_t v, int64_t n, int64_t q, int64_t I, int64_t vv, const int* param);
 __device__ int64_t n0(int64_t v, int64_t n, int64_t vv, const int* param);
 __device__ int64_t q0(int64_t v, int64_t q, int64_t vv, const int* param);
+__device__ int64_t u0(int64_t v, int64_t u, const int* param);
 
 __global__ void update_neuron_state(
     int64_t* Vs_d, 
     int64_t* Ns_d, 
     int64_t* Qs_d, 
+    int64_t* Us_d, 
     const unsigned char* neuron_type,
     // const int* RSexci_param,
     // const int* RSinhi_param,
@@ -36,27 +43,66 @@ __global__ void update_neuron_state(
         int64_t v = Vs_d[tid];
         int64_t n = Ns_d[tid];
         int64_t q = Qs_d[tid];
+        int64_t u = Us_d[tid];
 
         const int* param;
-        if (neuron_type[tid] == 0){
-            param = RSexci_param;
-        }else if (neuron_type[tid] == 1){
-            param = RSinhi_param;
-        }else{
-            return;
+        switch (neuron_type[tid]){
+            case 0:
+                param = RSexci_param;
+                break;
+            case 1:
+                param = RSinhi_param;
+                break;
+            case 2:
+                param = FS_param;
+                break;
+            case 3:
+                param = LTS_param;
+                break;
+            case 4:
+                param = IB_param;
+                break;
+            case 5:
+                param = EB_param;
+                break;
+            case 6:
+                param = PB_param;
+                break;
+            default:
+                param = RSexci_param;
         }
 
         int64_t I = (int64_t)((synaptic_input[tid]+I_input[tid])*(1<<param[1]));
         int64_t vv = (int64_t)((v * v) / (1LL << param[1]));
-        
-        v += v0(v, n, q, I, vv, param);
-        n += n0(v, n, vv, param);
-        q += q0(v, q, vv, param);
+
+        // Base PQN updates (RS/FS/EB-compatible)
+        int64_t dv = v0(v, n, q, I, vv, param);
+        // PB: v-u coupling term (param[33] is 0 for non-PB modes)
+        dv -= ((int64_t)param[33] * u) >> param[0];
+        // n update
+        int64_t dn = n0(v, n, vv, param);
+        // IB/LTS: n scaling by u threshold (enabled only when eta params are set)
+        if (param[31] != 0 || param[32] != 0) {
+            if (u < (int64_t)param[30]) {
+                dn = (dn * (int64_t)param[31]) >> param[0];
+            } else {
+                dn = (dn * (int64_t)param[32]) >> param[0];
+            }
+        }
+        // q update
+        int64_t dq = q0(v, q, vv, param);
+        // u update (enabled only when u params are set)
+        int64_t  du = 0;
+        if (param[27] != 0 || param[28] != 0 || param[29] != 0) {
+            du = u0(v, u, param);
+        }
+
 
         // 計算結果をグローバルメモリに書き戻して、次の呼び出しに備える
-        Vs_d[tid] = v;
-        Ns_d[tid] = n;
-        Qs_d[tid] = q;
+        Vs_d[tid] = v + dv;
+        Ns_d[tid] = n + dn;
+        Qs_d[tid] = q + dq;
+        Us_d[tid] = u + du;
 
         int64_t threshold = (4 << param[1]);
         unsigned char current_spike = (v > threshold) ? 1 : 0;
@@ -115,6 +161,15 @@ __device__ int64_t q0(int64_t v, int64_t q, int64_t vv, const int* param) {
             ((param[23] * q) >> param[0]);
     }
     return q0;
+}
+__device__ int64_t u0(int64_t v, int64_t u, const int* param) {
+    // Indices (extended params):
+    // 27: u_v, 28: u_u, 29: u_c
+    int64_t du;
+    du =(((int64_t)param[27] * v) >> param[0]) +
+        (((int64_t)param[28] * u) >> param[0]) +
+        (int64_t)param[29];
+    return du;
 }
 
 __global__ void copy_arrival_spike(
