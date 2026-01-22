@@ -60,12 +60,12 @@ def main(
     """
     # --- 初期設定 ---
     # Use a single PQN neuron model for all neurons (no RSexci/RSinhi branching)
-    neuron_classes = ["RS_exci","RS_inhi","FS","EB","LTS","IB","PB","Class2"]
+    neuron_classes = ["RS_exci", "RS_inhi", "FS", "EB", "LTS", "IB", "PB", "Class2"]
     neuron_mode = "RSexci"  # TODO: make this configurable (e.g., FS, LTS, ...)
     cell = PQNparam(mode=neuron_mode)
     cell_param_h = param_h_init(cell)
     tmax = 10  # [s]
-    dt = cell.PARAM['dt']
+    dt = cell.PARAM["dt"]
     S_durt = 8e-3  # 8[ms]
     # --- 外部入力がある場合はシミュレーション長とtmaxを調整 ---
     if input_data is not None:
