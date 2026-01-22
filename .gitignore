@@ -107,7 +107,10 @@ venv.bak/
 
 sim_results/*
 
-graphs/*
+# graphs/*
+archive/*
+data/*
+test/PQNonGPU_test/*
 
 RNN_analyze/reservoir_inputs/*
 RNN_analyze/reservoir_outputs/*
