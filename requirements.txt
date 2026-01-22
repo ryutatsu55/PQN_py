@@ -5,6 +5,7 @@ networkx
 line_profiler
 cupy-cuda13x
 pycuda
+pandas
 
 # for making cochleagram
 librosa
