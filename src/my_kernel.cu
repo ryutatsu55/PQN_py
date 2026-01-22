@@ -2,22 +2,25 @@
 // num_threads: 全体のスレッド数
 extern "C"
 #include <stdint.h>
-__constant__ int RSexci_param[34];
-__constant__ int RSinhi_param[34];
-__constant__ int FS_param[34];
-__constant__ int LTS_param[34];
-__constant__ int IB_param[34];
-__constant__ int EB_param[34];
-__constant__ int PB_param[34];
+// __constant__ int RSexci_param[34];
+// __constant__ int RSinhi_param[34];
+// __constant__ int FS_param[34];
+// __constant__ int LTS_param[34];
+// __constant__ int IB_param[34];
+// __constant__ int EB_param[34];
+// __constant__ int PB_param[34];
+__constant__ int AllParams[7][34];
+#define P(idx) p_base[idx]
+
 __constant__ float dt;
 __constant__ int buffer_size;
 __constant__ int num_neurons;
 __constant__ int num_synapses;
 
-__device__ int64_t v0(int64_t v, int64_t n, int64_t q, int64_t I, int64_t vv, const int* param);
-__device__ int64_t n0(int64_t v, int64_t n, int64_t vv, const int* param);
-__device__ int64_t q0(int64_t v, int64_t q, int64_t vv, const int* param);
-__device__ int64_t u0(int64_t v, int64_t u, const int* param);
+__device__ int64_t v0(int64_t v, int64_t n, int64_t q, int64_t u, int64_t I, int64_t vv, const int* p_base);
+__device__ int64_t n0(int64_t v, int64_t n, int64_t u, int64_t vv, const int* p_base);
+__device__ int64_t q0(int64_t v, int64_t q, int64_t vv, const int* p_base);
+__device__ int64_t u0(int64_t v, int64_t u, const int* p_base);
 
 __global__ void update_neuron_state(
     int64_t* Vs_d, 
@@ -45,57 +48,26 @@ __global__ void update_neuron_state(
         int64_t q = Qs_d[tid];
         int64_t u = Us_d[tid];
 
-        const int* param;
-        switch (neuron_type[tid]){
-            case 0:
-                param = RSexci_param;
-                break;
-            case 1:
-                param = RSinhi_param;
-                break;
-            case 2:
-                param = FS_param;
-                break;
-            case 3:
-                param = LTS_param;
-                break;
-            case 4:
-                param = IB_param;
-                break;
-            case 5:
-                param = EB_param;
-                break;
-            case 6:
-                param = PB_param;
-                break;
-            default:
-                param = RSexci_param;
-        }
+        int type_idx = neuron_type[tid];
+        const int* p_base = AllParams[type_idx];
 
-        int64_t I = (int64_t)((synaptic_input[tid]+I_input[tid])*(1<<param[1]));
-        int64_t vv = (int64_t)((v * v) / (1LL << param[1]));
+        /* [Fixed-Point Settings]
+            0: BIT_Y_SHIFT          (Shift amount for normalization, usually 20)
+            1: BIT_WIDTH_FRACTIONAL (Shift amount for inputs/thresholds, usually 10)
+        */
 
-        // Base PQN updates (RS/FS/EB-compatible)
-        int64_t dv = v0(v, n, q, I, vv, param);
-        // PB: v-u coupling term (param[33] is 0 for non-PB modes)
-        dv -= ((int64_t)param[33] * u) >> param[0];
+        int64_t I = (int64_t)((synaptic_input[tid]+I_input[tid])*(1<<P(1)));
+        int64_t vv = (int64_t)((v * v) / (1LL << P(1)));
+
+        // PQN updates (compatible among all neuron types)
+        // v update
+        int64_t dv = v0(v, n, q, u, I, vv, p_base);
         // n update
-        int64_t dn = n0(v, n, vv, param);
-        // IB/LTS: n scaling by u threshold (enabled only when eta params are set)
-        if (param[31] != 0 || param[32] != 0) {
-            if (u < (int64_t)param[30]) {
-                dn = (dn * (int64_t)param[31]) >> param[0];
-            } else {
-                dn = (dn * (int64_t)param[32]) >> param[0];
-            }
-        }
+        int64_t dn = n0(v, n, u, vv, p_base);
         // q update
-        int64_t dq = q0(v, q, vv, param);
+        int64_t dq = q0(v, q, vv, p_base);
         // u update (enabled only when u params are set)
-        int64_t  du = 0;
-        if (param[27] != 0 || param[28] != 0 || param[29] != 0) {
-            du = u0(v, u, param);
-        }
+        int64_t du = u0(v, u, p_base);
 
 
         // 計算結果をグローバルメモリに書き戻して、次の呼び出しに備える
@@ -104,7 +76,7 @@ __global__ void update_neuron_state(
         Qs_d[tid] = q + dq;
         Us_d[tid] = u + du;
 
-        int64_t threshold = (4 << param[1]);
+        int64_t threshold = (4 << P(1));
         unsigned char current_spike = (v > threshold) ? 1 : 0;
         raster[tid] = (current_spike && !last_spike[tid]);
         // last_spike[tid] = last_spike[tid] | raster[tid];
@@ -113,63 +85,100 @@ __global__ void update_neuron_state(
     }
 }
 
-__device__ int64_t v0(int64_t v, int64_t n, int64_t q, int64_t I, int64_t vv, const int* param) {
-    int64_t v0;
-    if(v < 0){
-        v0 =((param[2] * vv) >> param[0]) +
-            ((param[3] * v) >> param[0]) +
-            param[4] +
-            ((param[5] * n) >> param[0]) +
-            ((param[6] * q) >> param[0]) +
-            ((param[7] * I) >> param[0]);
-    }else{
-        v0 =((param[8] * vv) >> param[0]) +
-            ((param[9] * v) >> param[0]) +
-            param[10] +
-            ((param[5] * n) >> param[0]) +
-            ((param[6] * q) >> param[0]) +
-            ((param[7] * I) >> param[0]);
-    }
-    return v0;
+__device__ int64_t v0(int64_t v, int64_t n, int64_t q, int64_t u, int64_t I, int64_t vv, const int* p_base) {
+    /* [Membrane Potential (v) Dynamics]
+        --- If v < 0 ---
+        2: v_vv_S   (Coefficient for v^2)
+        3: v_v_S    (Coefficient for v)
+        4: v_c_S    (Constant term)
+        --- If v >= 0 ---
+        8: v_vv_L   (Coefficient for v^2)
+        9: v_v_L    (Coefficient for v)
+        10: v_c_L    (Constant term)
+        --- Coupling Terms ---
+        5: v_n      (Feedback from n)
+        6: v_q      (Feedback from q)
+        7: v_I      (Input current gain)
+        33: v_u      (Feedback from u, used in PB mode. Is 0 for non-PB modes)
+     */
+    bool neg = (v < 0);
+    int64_t c_vv = neg ? P(2) : P(8);
+    int64_t c_v  = neg ? P(3) : P(9);
+    int64_t c_c  = neg ? P(4) : P(10);
+    
+    return ((c_vv * vv) >> P(0)) +
+           ((c_v  * v)  >> P(0)) +
+            c_c +
+           ((P(5) * n) >> P(0)) +
+           ((P(6) * q) >> P(0)) +
+           ((P(7) * I) >> P(0)) -
+           ((P(33) * u) >> P(0));
 }
-__device__ int64_t n0(int64_t v, int64_t n, int64_t vv, const int* param) {
-    int64_t n0;
-    if(v<param[11]){
-        n0 =((param[12] * vv) >> param[0]) +
-            ((param[13] * v) >> param[0]) +
-            param[14] +
-            ((param[15] * n) >> param[0]);
-    }else{
-        n0 =((param[16] * vv) >> param[0]) +
-            ((param[17] * v) >> param[0]) +
-            param[18] +
-            ((param[15] * n) >> param[0]);
-    }
-    return n0;
+__device__ int64_t n0(int64_t v, int64_t n, int64_t u, int64_t vv, const int* p_base) {
+    /* [Recovery Variable (n) Dynamics]
+        11: rg       (Threshold for n dynamics switching)
+        --- If v < rg ---
+        12: n_vv_S   (Coefficient for v^2)
+        13: n_v_S    (Coefficient for v)
+        14: n_c_S    (Constant term)
+        --- If v >= rg ---
+        16: n_vv_L   (Coefficient for v^2)
+        17: n_v_L    (Coefficient for v)
+        18: n_c_L    (Constant term)
+        --- Self Decay ---
+        15: n_n      (Decay rate of n)
+        --- u-dependent scaling (only LTS/IB modes otherwise calculated eta to be 1) ---
+        30: ru       (Threshold for u)
+        31: n_uS     (Scaling factor eta0 if u < ru)
+        32: n_uL     (Scaling factor eta1 if u >= ru)
+    */
+    bool cond = (v < P(11)); // rg
+    int64_t c_vv = cond ? P(12) : P(16);
+    int64_t c_v  = cond ? P(13) : P(17);
+    int64_t c_c  = cond ? P(14) : P(18);
+
+    int64_t dn = ((c_vv * vv) >> P(0)) +
+                 ((c_v  * v)  >> P(0)) +
+                    c_c +
+                 ((P(15) * n) >> P(0));
+    
+    // IB/LTS: n scaling by u threshold (enabled only when eta params are set)
+    int64_t eta = (u < (int64_t)P(30)) ? (int64_t)P(31) : (int64_t)P(32);
+    return (dn * eta) >> P(0);
 }
-__device__ int64_t q0(int64_t v, int64_t q, int64_t vv, const int* param) {
-    int64_t q0;
-    if(v<param[19]){
-        q0 =((param[20] * vv) >> param[0]) +
-            ((param[21] * v) >> param[0]) +
-            param[22] +
-            ((param[23] * q) >> param[0]);
-    }else{
-        q0 =((param[24] * vv) >> param[0]) +
-            ((param[25] * v) >> param[0]) +
-            param[26] +
-            ((param[23] * q) >> param[0]);
-    }
-    return q0;
+__device__ int64_t q0(int64_t v, int64_t q, int64_t vv, const int* p_base) {
+    /* [Slow Variable (q) Dynamics]
+        19: rh       (Threshold for q dynamics switching)
+        --- If v < rh ---
+        20: q_vv_S   (Coefficient for v^2)
+        21: q_v_S    (Coefficient for v)
+        22: q_c_S    (Constant term)
+        --- If v >= rh ---
+        24: q_vv_L   (Coefficient for v^2)
+        25: q_v_L    (Coefficient for v)
+        26: q_c_L    (Constant term)
+        --- Self Decay ---
+        23: q_q      (Decay rate of q)
+    */
+    bool cond = (v < P(19)); // rh
+    int64_t c_vv = cond ? P(20) : P(24);
+    int64_t c_v  = cond ? P(21) : P(25);
+    int64_t c_c  = cond ? P(22) : P(26);
+
+    return ((c_vv * vv) >> P(0)) +
+           ((c_v  * v)  >> P(0)) +
+            c_c +
+           ((P(23) * q) >> P(0));
 }
-__device__ int64_t u0(int64_t v, int64_t u, const int* param) {
-    // Indices (extended params):
-    // 27: u_v, 28: u_u, 29: u_c
-    int64_t du;
-    du =(((int64_t)param[27] * v) >> param[0]) +
-        (((int64_t)param[28] * u) >> param[0]) +
-        (int64_t)param[29];
-    return du;
+__device__ int64_t u0(int64_t v, int64_t u, const int* p_base) {
+    /*[Ultra-Slow Variable (u) Dynamics] (LTS/IB/PB modes)
+        27: u_v      (Coupling from v)
+        28: u_u      (Self decay of u)
+        29: u_c      (Constant term)
+    */
+    return (((int64_t)P(27) * v) >> P(0)) +
+           (((int64_t)P(28) * u) >> P(0)) +
+            (int64_t)P(29);
 }
 
 __global__ void copy_arrival_spike(

@@ -43,7 +43,7 @@ class PQN_Reservoir_GPU:
         self.N_S = 1
 
         # --- ホスト側(CPU) パラメータ準備 ---
-        self.neuron_type_h = [0]
+        self.neuron_type_h = [0]  # 0: RSexci, 1: RSinhi, 2: FS, 3: LTS, 4: IB, 5: EB, 6: PB
         self.dt = 1e-3 if self.neuron_type_h[0] == 6 else 1e-4
 
         # PQNパラメータ初期化 (Excitatory / Inhibitory)
@@ -165,20 +165,32 @@ class PQN_Reservoir_GPU:
 
     def _upload_constants(self):
         # Global変数への転送
-        RSexci_param_d, _ = module.get_global("RSexci_param")
-        cuda.memcpy_htod(RSexci_param_d, self.RSexci_param_h)
-        RSinhi_param_d, _ = module.get_global("RSinhi_param")
-        cuda.memcpy_htod(RSinhi_param_d, self.RSinhi_param_h)
-        FS_param_d, _ = module.get_global("FS_param")
-        cuda.memcpy_htod(FS_param_d, self.FS_param_h)
-        LTS_param_d, _ = module.get_global("LTS_param")
-        cuda.memcpy_htod(LTS_param_d, self.LTS_param_h)
-        IB_param_d, _ = module.get_global("IB_param")
-        cuda.memcpy_htod(IB_param_d, self.IB_param_h)
-        EB_param_d, _ = module.get_global("EB_param")
-        cuda.memcpy_htod(EB_param_d, self.EB_param_h)
-        PB_param_d, _ = module.get_global("PB_param")
-        cuda.memcpy_htod(PB_param_d, self.PB_param_h)
+        all_params = np.zeros((7, 34), dtype=np.int32)
+        
+        params = [
+            self.RSexci_param_h, 
+            self.RSinhi_param_h, 
+            self.FS_param_h, 
+            self.LTS_param_h, 
+            self.IB_param_h, 
+            self.EB_param_h, 
+            self.PB_param_h
+            ]
+        
+        for i, param in enumerate(params):
+            # --- 重要: Branchless化のためのパッチ ---
+            # LTS/IB以外の場合、param[31], param[32] (eta) が0
+            # 計算式 dn = (dn * eta) >> shift を成立させるため、
+            # eta に 1.0 (つまり 1 << shift) を代入しておく。
+            if param[31] == 0 and param[32] == 0:
+                one_scaled = 1 << param[0] # param[0] is BIT_Y_SHIFT
+                param[31] = one_scaled
+                param[32] = one_scaled
+            
+            all_params[i] = param
+
+        all_params_d, _ = module.get_global("AllParams")
+        cuda.memcpy_htod(all_params_d, all_params)
 
         dt_float32 = np.float32(self.dt)
         dt_d, _ = module.get_global("dt")
@@ -433,7 +445,7 @@ def main():
     
     input_data = np.zeros((num_steps,1), dtype=np.float32)
     input_data[:] = np.float32(0.0)
-    input_data[5000:15000] = np.float32(0.0)
+    input_data[5000:15000] = np.float32(0.09)
 
     # runメソッドで一括実行
     results = sim.run(
