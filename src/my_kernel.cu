@@ -16,6 +16,8 @@ __constant__ float dt;
 __constant__ int buffer_size;
 __constant__ int num_neurons;
 __constant__ int num_synapses;
+__constant__ float tr;
+__constant__ float td;
 
 __device__ int64_t v0(int64_t v, int64_t n, int64_t q, int64_t u, int64_t I, int64_t vv, const int* p_base);
 __device__ int64_t n0(int64_t v, int64_t n, int64_t u, int64_t vv, const int* p_base);
@@ -223,8 +225,6 @@ __global__ void synapses_calc(
     const float* tau_faci,
     const float* U1,
     float* U,
-    float td,
-    float tr,
     int read_idx
 )
 {
@@ -253,8 +253,7 @@ __global__ void synapses_calc(
         dx -= temp;
         dy += temp;
         r_val = r_val*(1.0f - dt / td) + hr_val*dt;
-        // hr_val = hr_val*(1.0f - dt / tr) + temp / (tr*td);
-        hr_val = hr_val*(1.0f - dt / tr) + temp;
+        hr_val = hr_val*(1.0f - dt / tr) + temp / (tr*td);
         
         x_val += dx;
         y_val += dy;

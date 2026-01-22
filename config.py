@@ -19,7 +19,7 @@ class Config:
     # 14 / 6 for spoken digit
     
     # --- リザバー結合パラメータ ---
-    RESERVOIR_CONN = 700    # 結合強度係数 (元のコードの * 0.02)
+    RESERVOIR_CONN = 0.06    # 結合強度係数 (元のコードの * 0.02)
     READOUT_NODES = 60            # 読み出し層のノード数
 
     SPONTANEOUS_FREQ = 0.1
@@ -33,7 +33,7 @@ def init_reservoir(seed=Config.SEED):
     resovoir_origin, mask, type = create_moduled_matrix(N, rng)
     resovoir_weight = np.copy(resovoir_origin) * Config.RESERVOIR_CONN
     N_S = np.count_nonzero(resovoir_weight)
-    tau_rec_h, tau_inact_h, tau_faci_h, U1_h, U_h, mask_faci_h = synapses_init(resovoir_weight, N, N_S)
+    tau_rec_h, tau_inact_h, tau_faci_h, U1_h, U_h, mask_faci_h, tr, td = synapses_init(resovoir_weight, N, N_S)
     neuron_from_h, calc_matrix_h, neuron_to_h = calc_init(resovoir_weight, N, N_S)
     delayed_row_h = delay_init(resovoir_weight, N, N_S, mask, rng)
 
@@ -50,6 +50,8 @@ def init_reservoir(seed=Config.SEED):
         "mask": mask,
         "type": type,
         "N_S": N_S,
+        "tr" : tr,
+        "td" : td,
         "tau_rec_h": tau_rec_h,
         "tau_inact_h": tau_inact_h,
         "tau_faci_h": tau_faci_h,
@@ -185,6 +187,8 @@ def create_random_matrix(N, rng):
 
 
 def synapses_init(resovoir_weight, N, N_S):
+    tr = 5e-3
+    td = 1e-1
     tau_rec = np.full(N_S, 0.5, dtype=np.float32)
     tau_inact = np.full(N_S, 0.3, dtype=np.float32)
     tau_faci = np.full(N_S, 0.53, dtype=np.float32)
@@ -203,7 +207,7 @@ def synapses_init(resovoir_weight, N, N_S):
         # if r == c and c%(N//4) < N//5:
         #     U[i] = 0.1
         #     tau_rec[i] = 0.1
-    return tau_rec, tau_inact, tau_faci, U1, U, mask_faci
+    return tau_rec, tau_inact, tau_faci, U1, U, mask_faci, tr, td
 
 
 def calc_init(resovoir_weight, N, N_S):

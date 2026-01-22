@@ -220,6 +220,14 @@ class PQN_Reservoir_GPU:
         ns_d, _ = module.get_global("num_synapses")
         cuda.memcpy_htod(ns_d, ns_int32)
 
+        tr_float32 = np.float32(self.reservoir_state["tr"])
+        tr_d, _ = module.get_global("tr")
+        cuda.memcpy_htod(tr_d, tr_float32)
+
+        td_dloat32 = np.float32(self.reservoir_state["td"])
+        td_d, _ = module.get_global("td")
+        cuda.memcpy_htod(td_d, td_dloat32)
+
     def reset_state(self):
         """
         動的な状態変数（膜電位、スパイク履歴など）を初期化する。
@@ -344,8 +352,6 @@ class PQN_Reservoir_GPU:
             self.tau_faci_d.gpudata,
             self.U1_d.gpudata,
             self.U_d.gpudata,
-            np.float32(1e-2), # td
-            np.float32(5e-3), # tr
             read_idx,
             block=(self.synapse_threads, 1, 1),
             grid=(self.synapse_blocks, 1),
