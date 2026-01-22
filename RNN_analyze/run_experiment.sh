@@ -34,7 +34,7 @@ fi
 # 結果保存ディレクトリ
 BASE_DIR="RNN_analyze"
 RESULTS_DIR="${BASE_DIR}/archive/${EXP_NAME}"
-CONFIG_SRC="${BASE_DIR}/RNN_config.py" # 環境に合わせてパスを調整してください
+CONFIG_SRC="config.py" # 環境に合わせてパスを調整してください
 
 # --- 2. ユーティリティ関数 (Helper Functions) ---
 
@@ -81,18 +81,18 @@ fi
 # Step 1: 相関行列の解析
 section_header "Step 1: Analyzing Correlation Matrix"
 log_info "Running corr_neuron.py..."
-${PYTHON_EXEC} ${BASE_DIR}/corr_neuron.py
+${PYTHON_EXEC} ${BASE_DIR}/src/corr_neuron.py
 
 # Step 2: データ生成
 section_header "Step 2: Input Data Generation"
 log_info "Running make_spatial_input.py..."
-${PYTHON_EXEC} ${BASE_DIR}/make_spatial_input.py
+${PYTHON_EXEC} ${BASE_DIR}/src/make_spatial_input.py
 
-# Step 3: 空間認識 (SNNモード)
+# Step 3: 時空間認識 (SNNモード)
 section_header "Step 3: Spatial Recognition (SNN Mode)"
 log_info "Running recognition_test.py..."
 # tqdmの表示が崩れないようにPYTHONUNBUFFERED=1をつけるのがコツ
-PYTHONUNBUFFERED=1 ${PYTHON_EXEC} ${BASE_DIR}/recognition_test.py \
+PYTHONUNBUFFERED=1 ${PYTHON_EXEC} ${BASE_DIR}/src/recognition_test.py \
     --mode snn \
     --classifier both
 
@@ -100,7 +100,8 @@ PYTHONUNBUFFERED=1 ${PYTHON_EXEC} ${BASE_DIR}/recognition_test.py \
 # section_header "Step 3: Spatiotemporal Recognition (Feature Mode)"
 # log_info "Running spatiotemp_recognition.py..."
 # PYTHONUNBUFFERED=1 ${PYTHON_EXEC} RNN_analyze/spatiotemp_recognition.py \
-#     --mode feature
+#     --mode feature\
+#     --classifier both
 
 # Step 4: 結果の集約
 section_header "Step 4: Archiving Results"

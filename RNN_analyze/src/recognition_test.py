@@ -16,11 +16,19 @@ from mpl_toolkits.mplot3d import Axes3D
 from scipy.signal import lfilter
 
 import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-import RNN_config
+from pathlib import Path
+root_path = Path(__file__).resolve().parent.parent.parent
+sys.path.append(str(root_path))
+import config
 import src.PQN_RNN_onGPU as PQN_RNN_onGPU
 
-cfg = RNN_config.Config
+cfg = config.Config
+
+# --- ディレクトリパス設定 ---
+BASE_DIR = "RNN_analyze"
+INPUT_DIR = os.path.join(BASE_DIR, "reservoir_inputs")
+OUTPUT_DIR = os.path.join(BASE_DIR, "reservoir_outputs")
+RESULT_DIR = os.path.join(BASE_DIR, "result")
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -61,7 +69,7 @@ def load_dataset_split(
     X_test_paths = []
 
     # determine input dimension M (number of cochleagram channels)
-    train_top_dir = os.path.join(cfg.INPUT_DIR, "train", "top", "*.npy")
+    train_top_dir = os.path.join(INPUT_DIR, "train", "top", "*.npy")
     sample_paths = glob.glob(train_top_dir)
     if len(sample_paths) == 0:
         raise RuntimeError("No cochleagram .npy files found in train directories.")
@@ -70,7 +78,7 @@ def load_dataset_split(
     # print(sample_data.shape)
     # If linear mode, we do not initialize or use the reservoir
     if mode != "linear":
-        reservoir_state = RNN_config.init_reservoir()
+        reservoir_state = config.init_reservoir()
         sim = PQN_RNN_onGPU.PQN_Reservoir_GPU(reservoir_state, cfg) 
     else:
         reservoir_state = None
@@ -78,12 +86,12 @@ def load_dataset_split(
     
     # ----- TRAIN -----
     if mode == "snn":
-        if os.path.exists(cfg.OUTPUT_DIR):
-            shutil.rmtree(cfg.OUTPUT_DIR)
+        if os.path.exists(OUTPUT_DIR):
+            shutil.rmtree(OUTPUT_DIR)
         # TOP
-        output_dir = os.path.join(cfg.OUTPUT_DIR, "train/top")
+        output_dir = os.path.join(OUTPUT_DIR, "train/top")
         os.makedirs(output_dir, exist_ok=True)
-        path_list = glob.glob(os.path.join(cfg.INPUT_DIR, "train", "top", "*.npy"))
+        path_list = glob.glob(os.path.join(INPUT_DIR, "train", "top", "*.npy"))
         total_files = len(path_list)
         for i, path in enumerate(tqdm(path_list, desc="TRAIN TOP")):
             is_last_loop = (i == total_files - 1)
@@ -106,9 +114,9 @@ def load_dataset_split(
             np.save(save_path, feat)
 
         # MIDDLE
-        output_dir = os.path.join(cfg.OUTPUT_DIR, "train/middle")
+        output_dir = os.path.join(OUTPUT_DIR, "train/middle")
         os.makedirs(output_dir, exist_ok=True)
-        path_list = glob.glob(os.path.join(cfg.INPUT_DIR, "train", "middle", "*.npy"))
+        path_list = glob.glob(os.path.join(INPUT_DIR, "train", "middle", "*.npy"))
         total_files = len(path_list)
         for i, path in enumerate(tqdm(path_list, desc="TRAIN MIDDLE")):
             is_last_loop = (i == total_files - 1)
@@ -131,9 +139,9 @@ def load_dataset_split(
             np.save(save_path, feat)
 
         # BOTTOM
-        output_dir = os.path.join(cfg.OUTPUT_DIR, "train/bottom")
+        output_dir = os.path.join(OUTPUT_DIR, "train/bottom")
         os.makedirs(output_dir, exist_ok=True)
-        path_list = glob.glob(os.path.join(cfg.INPUT_DIR, "train", "bottom", "*.npy"))
+        path_list = glob.glob(os.path.join(INPUT_DIR, "train", "bottom", "*.npy"))
         total_files = len(path_list)
         for i, path in enumerate(tqdm(path_list, desc="TRAIN BOTTOM")):
             is_last_loop = (i == total_files - 1)
@@ -157,7 +165,7 @@ def load_dataset_split(
     elif mode == "feature":
         # TOP features
         for path in tqdm(
-            glob.glob(os.path.join(cfg.OUTPUT_DIR, "train", "top", "*.npy")),
+            glob.glob(os.path.join(OUTPUT_DIR, "train", "top", "*.npy")),
             desc="TRAIN TOP",
         ):
             feat = np.load(path)
@@ -166,7 +174,7 @@ def load_dataset_split(
 
         # MIDDLE features
         for path in tqdm(
-            glob.glob(os.path.join(cfg.OUTPUT_DIR, "train", "middle", "*.npy")),
+            glob.glob(os.path.join(OUTPUT_DIR, "train", "middle", "*.npy")),
             desc="TRAIN MIDDLE",
         ):
             feat = np.load(path)
@@ -175,7 +183,7 @@ def load_dataset_split(
 
         # BOTTOM features
         for path in tqdm(
-            glob.glob(os.path.join(cfg.OUTPUT_DIR, "train", "bottom", "*.npy")),
+            glob.glob(os.path.join(OUTPUT_DIR, "train", "bottom", "*.npy")),
             desc="TRAIN BOTTOM",
         ):
             feat = np.load(path)
@@ -184,7 +192,7 @@ def load_dataset_split(
     elif mode == "linear":
         # TOP
         for path in tqdm(
-            glob.glob(os.path.join(cfg.INPUT_DIR, "train", "top", "*.npy")),
+            glob.glob(os.path.join(INPUT_DIR, "train", "top", "*.npy")),
             desc="TRAIN TOP (linear)",
         ):
             input = np.load(path)
@@ -193,7 +201,7 @@ def load_dataset_split(
 
         # MIDDLE
         for path in tqdm(
-            glob.glob(os.path.join(cfg.INPUT_DIR, "train", "middle", "*.npy")),
+            glob.glob(os.path.join(INPUT_DIR, "train", "middle", "*.npy")),
             desc="TRAIN MIDDLE (linear)",
         ):
             input = np.load(path)
@@ -202,7 +210,7 @@ def load_dataset_split(
 
         # BOTTOM
         for path in tqdm(
-            glob.glob(os.path.join(cfg.INPUT_DIR, "train", "bottom", "*.npy")),
+            glob.glob(os.path.join(INPUT_DIR, "train", "bottom", "*.npy")),
             desc="TRAIN BOTTOM (linear)",
         ):
             input = np.load(path)
@@ -212,9 +220,9 @@ def load_dataset_split(
     # ----- TEST -----
     if mode == "snn":
         # TOP
-        output_dir = os.path.join(cfg.OUTPUT_DIR, "test/top")
+        output_dir = os.path.join(OUTPUT_DIR, "test/top")
         os.makedirs(output_dir, exist_ok=True)
-        path_list = glob.glob(os.path.join(cfg.INPUT_DIR, "test", "top", "*.npy"))
+        path_list = glob.glob(os.path.join(INPUT_DIR, "test", "top", "*.npy"))
         total_files = len(path_list)
         for i, path in enumerate(tqdm(path_list, desc="TEST TOP")):
             is_last_loop = (i == total_files - 1)
@@ -238,9 +246,9 @@ def load_dataset_split(
             np.save(save_path, feat)
 
         # MIDDLE
-        output_dir = os.path.join(cfg.OUTPUT_DIR, "test/middle")
+        output_dir = os.path.join(OUTPUT_DIR, "test/middle")
         os.makedirs(output_dir, exist_ok=True)
-        path_list = glob.glob(os.path.join(cfg.INPUT_DIR, "test", "middle", "*.npy"))
+        path_list = glob.glob(os.path.join(INPUT_DIR, "test", "middle", "*.npy"))
         total_files = len(path_list)
         for i, path in enumerate(tqdm(path_list, desc="TEST MIDDLE")):
             is_last_loop = (i == total_files - 1)
@@ -264,9 +272,9 @@ def load_dataset_split(
             np.save(save_path, feat)
 
         # BOTTOM
-        output_dir = os.path.join(cfg.OUTPUT_DIR, "test/bottom")
+        output_dir = os.path.join(OUTPUT_DIR, "test/bottom")
         os.makedirs(output_dir, exist_ok=True)
-        path_list = glob.glob(os.path.join(cfg.INPUT_DIR, "test", "bottom", "*.npy"))
+        path_list = glob.glob(os.path.join(INPUT_DIR, "test", "bottom", "*.npy"))
         total_files = len(path_list)
         for i, path in enumerate(tqdm(path_list, desc="TEST BOTTOM")):
             is_last_loop = (i == total_files - 1)
@@ -291,7 +299,7 @@ def load_dataset_split(
     elif mode == "feature":
         # TOP features
         for path in tqdm(
-            glob.glob(os.path.join(cfg.OUTPUT_DIR, "test", "top", "*.npy")),
+            glob.glob(os.path.join(OUTPUT_DIR, "test", "top", "*.npy")),
             desc="TEST TOP",
         ):
             feat = np.load(path)
@@ -300,7 +308,7 @@ def load_dataset_split(
             X_test_paths.append(path)
         # MIDDLE features
         for path in tqdm(
-            glob.glob(os.path.join(cfg.OUTPUT_DIR, "test", "middle", "*.npy")),
+            glob.glob(os.path.join(OUTPUT_DIR, "test", "middle", "*.npy")),
             desc="TEST MIDDLE",
         ):
             feat = np.load(path)
@@ -309,7 +317,7 @@ def load_dataset_split(
             X_test_paths.append(path)
         # BOTTOM features
         for path in tqdm(
-            glob.glob(os.path.join(cfg.OUTPUT_DIR, "test", "bottom", "*.npy")),
+            glob.glob(os.path.join(OUTPUT_DIR, "test", "bottom", "*.npy")),
             desc="TEST BOTTOM",
         ):
             feat = np.load(path)
@@ -319,7 +327,7 @@ def load_dataset_split(
     elif mode == "linear":
         # TOP
         for path in tqdm(
-            glob.glob(os.path.join(cfg.INPUT_DIR, "test", "top", "*.npy")),
+            glob.glob(os.path.join(INPUT_DIR, "test", "top", "*.npy")),
             desc="TEST TOP (linear)",
         ):
             input = np.load(path)
@@ -329,7 +337,7 @@ def load_dataset_split(
 
         # MIDLE
         for path in tqdm(
-            glob.glob(os.path.join(cfg.INPUT_DIR, "test", "middle", "*.npy")),
+            glob.glob(os.path.join(INPUT_DIR, "test", "middle", "*.npy")),
             desc="TEST MIDLE (linear)",
         ):
             input = np.load(path)
@@ -339,7 +347,7 @@ def load_dataset_split(
 
         # BOTTOM
         for path in tqdm(
-            glob.glob(os.path.join(cfg.INPUT_DIR, "test", "bottom", "*.npy")),
+            glob.glob(os.path.join(INPUT_DIR, "test", "bottom", "*.npy")),
             desc="TEST BOTTOM (linear)",
         ):
             input = np.load(path)
@@ -382,7 +390,7 @@ def spatial_recognition(mode: str) -> None:
     analyze_trajectories(
         X_train, 
         y_train, 
-        save_dir=f"{cfg.RESULT_DIR}/figs", 
+        save_dir=f"{RESULT_DIR}/figs", 
         dt=cfg.DT  # または cfg.DT (シミュレーションの時間刻みに合わせてください)
     )
 
@@ -473,7 +481,7 @@ def spatial_recognition(mode: str) -> None:
     # Save results
     # ================================================
     filename = "confusion_matrix_.png"
-    plt.savefig(f"{cfg.RESULT_DIR}/figs/{filename}")
+    plt.savefig(f"{RESULT_DIR}/figs/{filename}")
     plt.close()
     print(f"Saved {filename}")
 
@@ -481,8 +489,8 @@ def spatial_recognition(mode: str) -> None:
     print(f"Test Accuracy:  {acc_test * 100:.2f}%")
 
     # 保存
-    np.save(f"{cfg.OUTPUT_DIR}/W_out_space.npy", W_out)
-    np.save(f"{cfg.RESULT_DIR}/data/W_out_space.npy", W_out)
+    np.save(f"{OUTPUT_DIR}/W_out_space.npy", W_out)
+    np.save(f"{RESULT_DIR}/data/W_out_space.npy", W_out)
     print("Saved W_out.npy")
 
     print("\nMisclassified files:")
@@ -501,7 +509,7 @@ def spatial_recognition(mode: str) -> None:
         "acc_test": acc_test,
     }
 
-    with open(f"{cfg.BASE_DIR}/archive/results.jsonl", "a") as f:
+    with open(f"{BASE_DIR}/archive/results.jsonl", "a") as f:
         f.write(json.dumps(result) + "\n")
 
 def delayed_space(mode: str) -> None:
@@ -566,16 +574,16 @@ def delayed_space(mode: str) -> None:
     # Save results
     # ================================================
     filename = "short-term-memory"
-    plt.savefig(f"{cfg.RESULT_DIR}/figs/{filename}.png")
+    plt.savefig(f"{RESULT_DIR}/figs/{filename}.png")
     plt.close()
     print(f"Saved {filename}")
     data = np.column_stack([t, r_train, r_test])
-    np.save(f"{cfg.RESULT_DIR}/data/{filename}.npy", data)
+    np.save(f"{RESULT_DIR}/data/{filename}.npy", data)
 
 
     # 保存
     filename = "W_out_spatiotemp"
-    np.save(f"{cfg.RESULT_DIR}/data/{filename}.npy", W_out)
+    np.save(f"{RESULT_DIR}/data/{filename}.npy", W_out)
     print(f"Saved {filename}")
 
 def apply_calcium_filter(neural_data: np.ndarray, dt: float, tau: float = 0.8) -> np.ndarray:

@@ -6,11 +6,9 @@ from tqdm import tqdm
 
 import sys
 from pathlib import Path
-
-sys.path.append(
-    str(Path(__file__).resolve().parents[1])
-)  # HACK: 親ディレクトリをパスに追加
-import GPU_SNN_simulation
+root_path = Path(__file__).resolve().parent.parent.parent
+sys.path.append(str(root_path))
+import src.PQN_RNN_onGPU as PQN_RNN_onGPU
 
 os.makedirs("reservoir_outputs/train", exist_ok=True)
 os.makedirs("reservoir_outputs/test", exist_ok=True)
@@ -43,7 +41,7 @@ def process_and_save(
 
         # ---- SNN 実行（特徴ベクトルを得る） ----
         is_last_iteration = (i == len(paths) - 1)
-        feat = GPU_SNN_simulation.main(
+        feat = PQN_RNN_onGPU.main(
             input_data=coch,
             label=label,
             return_feature=True,

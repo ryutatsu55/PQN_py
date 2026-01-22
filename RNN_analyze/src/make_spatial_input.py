@@ -3,16 +3,24 @@ import random
 import os
 import shutil
 import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-import RNN_config
+from pathlib import Path
+root_path = Path(__file__).resolve().parent.parent.parent
+sys.path.append(str(root_path))
+import config
 
-cfg = RNN_config.Config
+cfg = config.Config
 rng = np.random.RandomState(cfg.SEED)
+
+# --- ディレクトリパス設定 ---
+BASE_DIR = "RNN_analyze"
+INPUT_DIR = os.path.join(BASE_DIR, "reservoir_inputs")
+OUTPUT_DIR = os.path.join(BASE_DIR, "reservoir_outputs")
+RESULT_DIR = os.path.join(BASE_DIR, "result")
 
 def make_data():
     print(f"Generating data with N={cfg.N}, Strength={cfg.INPUT_STRENGTH}...")
     
-    target_dir = cfg.INPUT_DIR
+    target_dir = INPUT_DIR
     if os.path.exists(target_dir):
         shutil.rmtree(target_dir)
         print(f"ディレクトリ {target_dir} を削除しました。")
@@ -31,7 +39,7 @@ def make_data():
     phases = ["train", "test"]
     for phase in phases:
         for cat in categories:
-            os.makedirs(os.path.join(cfg.INPUT_DIR, phase, cat), exist_ok=True)
+            os.makedirs(os.path.join(INPUT_DIR, phase, cat), exist_ok=True)
 
     # データ生成ループ (Train)
     for i in range(cfg.N_TRAIN):
@@ -42,7 +50,7 @@ def make_data():
         input_data[:stim_steps, in_neurons[target]] = cfg.INPUT_STRENGTH
         
         cat = categories[target]
-        save_path = os.path.join(cfg.INPUT_DIR, "train", cat, f"{i}.npy")
+        save_path = os.path.join(INPUT_DIR, "train", cat, f"{i}.npy")
         np.save(save_path, input_data)
 
     # データ生成ループ (Test)
@@ -52,7 +60,7 @@ def make_data():
         input_data[:stim_steps, in_neurons[target]] = cfg.INPUT_STRENGTH
         
         cat = categories[target]
-        save_path = os.path.join(cfg.INPUT_DIR, "test", cat, f"{i}.npy")
+        save_path = os.path.join(INPUT_DIR, "test", cat, f"{i}.npy")
         np.save(save_path, input_data)
 
 if __name__ == "__main__":

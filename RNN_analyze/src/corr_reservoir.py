@@ -3,19 +3,27 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import sys
 import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-import RNN_config
+from pathlib import Path
+root_path = Path(__file__).resolve().parent.parent.parent
+sys.path.append(str(root_path))
+import config
+
+# --- ディレクトリパス設定 ---
+BASE_DIR = "RNN_analyze"
+INPUT_DIR = os.path.join(BASE_DIR, "reservoir_inputs")
+OUTPUT_DIR = os.path.join(BASE_DIR, "reservoir_outputs")
+RESULT_DIR = os.path.join(BASE_DIR, "result")
 
 def analyze_correlation():
     # 1. 設定の読み込みとリザバーの初期化
     print("Initializing reservoir based on RNN_config...")
-    cfg = RNN_config.Config
+    cfg = config.Config
     # シード固定（再現性のため）
-    RNN_config.set_global_seed(cfg.SEED)
+    config.set_global_seed(cfg.SEED)
     
     # ネットワーク構築
     # init_reservoir() は辞書を返します: {"reservoir_weight": ..., "mask": ..., ...}
-    reservoir_params = RNN_config.init_reservoir()
+    reservoir_params = config.init_reservoir()
     W = reservoir_params["reservoir_weight"]
     N = cfg.N
     
@@ -86,12 +94,12 @@ def analyze_correlation():
 
     plt.tight_layout()
     filename = "correlation_analysis.png"
-    plt.savefig(f"{cfg.RESULT_DIR}/figs/{filename}")
+    plt.savefig(f"{RESULT_DIR}/figs/{filename}")
     plt.close()
     print("Saved plot to 'correlation_analysis.png'")
 
     
-    np.save(f"{cfg.RESULT_DIR}/data/correlation_matrix.npy", correlation_matrix)
+    np.save(f"{RESULT_DIR}/data/correlation_matrix.npy", correlation_matrix)
     print("Saved correlation_matrix.npy")
 
     return correlation_matrix

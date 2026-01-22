@@ -6,15 +6,23 @@ import seaborn as sns
 
 # 自作モジュールのインポート
 import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-import RNN_config
+from pathlib import Path
+root_path = Path(__file__).resolve().parent.parent.parent
+sys.path.append(str(root_path))
+import config
 import src.PQN_RNN_onGPU as PQN_RNN
+
+# --- ディレクトリパス設定 ---
+BASE_DIR = "RNN_analyze"
+INPUT_DIR = os.path.join(BASE_DIR, "reservoir_inputs")
+OUTPUT_DIR = os.path.join(BASE_DIR, "reservoir_outputs")
+RESULT_DIR = os.path.join(BASE_DIR, "result")
 
 def analyze():
     # ==========================================
     # 1. 設定と初期化
     # ==========================================
-    cfg = RNN_config.Config
+    cfg = config.Config
     # シードを固定しないと毎回結果が変わります（必要に応じて固定）
     # RNN_config.set_global_seed(cfg.SEED) 
     
@@ -22,7 +30,7 @@ def analyze():
     
     # ネットワーク構造の生成
     # (RNN_config.init_reservoir内で乱数が使われるので、構造もここで決まります)
-    reservoir_state = RNN_config.init_reservoir()
+    reservoir_state = config.init_reservoir()
     
     # GPUシミュレータのインスタンス化
     sim = PQN_RNN.PQN_Reservoir_GPU(reservoir_state, cfg)
@@ -107,12 +115,12 @@ def analyze():
     plt.ylabel("Neuron ID")
 
     plt.tight_layout()
-    plt.savefig(f"{cfg.RESULT_DIR}/figs/correlation_matrix.png")
+    plt.savefig(f"{RESULT_DIR}/figs/correlation_matrix.png")
     plt.close()
     print("Plot saved to: correlation_matrix.png")
 
     
-    np.save(f"{cfg.RESULT_DIR}/data/correlation_matrix.npy", correlation_matrix)
+    np.save(f"{RESULT_DIR}/data/correlation_matrix.npy", correlation_matrix)
     print("Saved correlation_matrix.npy")
     
     
@@ -130,7 +138,7 @@ def analyze():
     plt.legend(loc='upper right')
     plt.xlim(0, 1.0) # 最初の1秒だけ拡大
     plt.tight_layout()
-    plt.savefig(f"{cfg.RESULT_DIR}/figs/activity_trace.png")
+    plt.savefig(f"{RESULT_DIR}/figs/activity_trace.png")
 
 if __name__ == "__main__":
     analyze()

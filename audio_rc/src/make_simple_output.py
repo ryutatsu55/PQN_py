@@ -6,11 +6,9 @@ from tqdm import tqdm
 
 import sys
 from pathlib import Path
-
-sys.path.append(
-    str(Path(__file__).resolve().parents[1])
-)  # HACK: 親ディレクトリをパスに追加
-import GPU_SNN_simulation
+root_path = Path(__file__).resolve().parent.parent.parent
+sys.path.append(str(root_path))
+import src.PQN_RNN_onGPU as PQN_RNN
 
 os.makedirs("reservoir_outputs/train", exist_ok=True)
 os.makedirs("reservoir_outputs/test", exist_ok=True)

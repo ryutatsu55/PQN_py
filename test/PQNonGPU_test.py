@@ -15,6 +15,9 @@ from pathlib import Path
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from src.PQN import PQNparam
+import config
+
+cfg = config.Config()
 
 # -------------------------------------------------------------
 # 1. 外部の .cu ファイルを読み込んで文字列として取得
@@ -477,8 +480,8 @@ def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, num):
     ax1.set_ylabel("v")
     ax0.set_ylabel("I")
     ax1.set_xlabel("[s]")
-    os.makedirs("graphs", exist_ok=True)
-    plt.savefig("graphs/single_neuron.png")
+    os.makedirs("result", exist_ok=True)
+    plt.savefig("result/single_neuron.png")
     plt.close()
 
 def plot_raster(dt, tmax, rasters, N, num):
@@ -492,8 +495,8 @@ def plot_raster(dt, tmax, rasters, N, num):
     plt.ylim(0, N)
     plt.title("Raster Plot")
     plt.tight_layout()
-    os.makedirs("graphs", exist_ok=True)
-    plt.savefig("graphs/raster.png")
+    os.makedirs("result", exist_ok=True)
+    plt.savefig("result/raster.png")
     plt.close()
     
 if __name__ == "__main__":

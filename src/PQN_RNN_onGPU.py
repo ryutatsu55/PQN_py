@@ -15,10 +15,16 @@ from pathlib import Path
 
 from src.PQN import PQNparam
 
+# --- ディレクトリパス設定 ---
+BASE_DIR = "RNN_analyze"
+INPUT_DIR = os.path.join(BASE_DIR, "reservoir_inputs")
+OUTPUT_DIR = os.path.join(BASE_DIR, "reservoir_outputs")
+RESULT_DIR = os.path.join(BASE_DIR, "result")
+
 # -------------------------------------------------------------
 # 1. 外部の .cu ファイルを読み込んで文字列として取得
 # -------------------------------------------------------------
-with open("RNN_analyze/src/my_kernel.cu", "r", encoding="utf-8") as f:
+with open("src/my_kernel.cu", "r", encoding="utf-8") as f:
     my_kernel_code = f.read()
 
 # CuPyのRawKernelとしてカーネルをコンパイル
@@ -33,7 +39,7 @@ mat_vec_mul = module.get_function("mat_vec_mul")
 # 2. Reservoir クラス定義
 # -------------------------------------------------------------
 class PQN_Reservoir_GPU:
-    def __init__(self, reservoir_state, cfg, buffer_size=1001, seed=None):
+    def __init__(self, reservoir_state, cfg, buffer_size=10001, seed=None):
         effective_seed = seed if seed is not None else cfg.SEED
         self.rng = np.random.RandomState(effective_seed)
         """
@@ -46,6 +52,7 @@ class PQN_Reservoir_GPU:
         self.reservoir_state = reservoir_state
 
         # --- ホスト側(CPU) パラメータ準備 ---
+        # PBだけdtが異なるが、現在未対応
         self.neuron_type_h = reservoir_state["type"]
         self.input_indices = reservoir_state["input_indices"]
         self.output_indices = reservoir_state["output_indices"]
@@ -53,14 +60,24 @@ class PQN_Reservoir_GPU:
         # PQNパラメータ初期化 (Excitatory / Inhibitory)
         self.RSexci = PQNparam(mode="RSexci")
         self.RSinhi = PQNparam(mode="RSinhi")
+        self.FS = PQNparam(mode="FS")
+        self.LTS = PQNparam(mode="LTS")
+        self.IB = PQNparam(mode="IB")
+        self.EB = PQNparam(mode="EB")
+        self.PB = PQNparam(mode="PB")
         self.RSexci_param_h = self._param_h_init(self.RSexci)
         self.RSinhi_param_h = self._param_h_init(self.RSinhi)
+        self.FS_param_h = self._param_h_init(self.FS)
+        self.LTS_param_h = self._param_h_init(self.LTS)
+        self.IB_param_h = self._param_h_init(self.IB)
+        self.EB_param_h = self._param_h_init(self.EB)
+        self.PB_param_h = self._param_h_init(self.PB)
 
         # 定数パラメータのGPU転送 (Globalメモリ)
         self._upload_constants()
 
         # --- GPUメモリの確保 (Static: 重みや遅延など変化しないもの) ---
-        self.neuron_type_d = gpuarray.to_gpu(self.neuron_type_h)
+        self.neuron_type_d = gpuarray.to_gpu(np.uint8(self.neuron_type_h))
         self.tau_rec_d = gpuarray.to_gpu(reservoir_state["tau_rec_h"])
         self.tau_inact_d = gpuarray.to_gpu(reservoir_state["tau_inact_h"])
         self.tau_faci_d = gpuarray.to_gpu(reservoir_state["tau_faci_h"])
@@ -95,58 +112,97 @@ class PQN_Reservoir_GPU:
         self.I_input_log = None
 
     def _param_h_init(self, PQN):
-        # (元の param_h_init 関数の中身を移植)
-        if PQN.mode in ["RSexci", "RSinhi", "FS", "EB"]:
-            param = np.zeros(27, dtype=np.int32)
+        """Build a fixed-size (34) parameter vector for the CUDA kernel.
+
+        Layout:
+        0-26 : existing RS/FS/EB/LTS/IB/PB/Class2 parameters (as before)
+        27   : u_v
+        28   : u_u
+        29   : u_c
+        30   : ru
+        31   : n_uS (eta0)
+        32   : n_uL (eta1)
+        33   : v_u (PB only)
+
+        For modes that do not use these terms, the entries remain 0 so the CUDA
+        kernel behaves exactly like the old implementation.
+        """
+        param = np.zeros(34, dtype=np.int32)
+
+        # --- Common 0-26 mapping (works for RS/FS/EB/LTS/IB/PB) ---
+        if PQN.mode in ["RSexci", "RSinhi", "FS", "EB", "LTS", "IB", "PB"]:
             param[0] = PQN.BIT_Y_SHIFT
             param[1] = PQN.BIT_WIDTH_FRACTIONAL
-            param[2] = PQN.Y["v_vv_S"]
-            param[3] = PQN.Y["v_v_S"]
-            param[4] = PQN.Y["v_c_S"]
-            param[5] = PQN.Y["v_n"]
-            param[6] = PQN.Y["v_q"]
-            param[7] = PQN.Y["v_I"]
-            param[8] = PQN.Y["v_vv_L"]
-            param[9] = PQN.Y["v_v_L"]
-            param[10] = PQN.Y["v_c_L"]
-            param[11] = PQN.Y["rg"]
-            param[12] = PQN.Y["n_vv_S"]
-            param[13] = PQN.Y["n_v_S"]
-            param[14] = PQN.Y["n_c_S"]
-            param[15] = PQN.Y["n_n"]
-            param[16] = PQN.Y["n_vv_L"]
-            param[17] = PQN.Y["n_v_L"]
-            param[18] = PQN.Y["n_c_L"]
-            param[19] = PQN.Y["rh"]
-            param[20] = PQN.Y["q_vv_S"]
-            param[21] = PQN.Y["q_v_S"]
-            param[22] = PQN.Y["q_c_S"]
-            param[23] = PQN.Y["q_q"]
-            param[24] = PQN.Y["q_vv_L"]
-            param[25] = PQN.Y["q_v_L"]
-            param[26] = PQN.Y["q_c_L"]
-            return param
-        elif PQN.mode in ["LTS", "IB"]:
-            param = np.zeros(27, dtype=np.int32)
+            param[2] = PQN.Y.get("v_vv_S", 0)
+            param[3] = PQN.Y.get("v_v_S", 0)
+            param[4] = PQN.Y.get("v_c_S", 0)
+            param[5] = PQN.Y.get("v_n", 0)
+            param[6] = PQN.Y.get("v_q", 0)
+            param[7] = PQN.Y.get("v_I", 0)
+            param[8] = PQN.Y.get("v_vv_L", 0)
+            param[9] = PQN.Y.get("v_v_L", 0)
+            param[10] = PQN.Y.get("v_c_L", 0)
+            param[11] = PQN.Y.get("rg", 0)
+            param[12] = PQN.Y.get("n_vv_S", 0)
+            param[13] = PQN.Y.get("n_v_S", 0)
+            param[14] = PQN.Y.get("n_c_S", 0)
+            param[15] = PQN.Y.get("n_n", 0)
+            param[16] = PQN.Y.get("n_vv_L", 0)
+            param[17] = PQN.Y.get("n_v_L", 0)
+            param[18] = PQN.Y.get("n_c_L", 0)
+            param[19] = PQN.Y.get("rh", 0)
+            param[20] = PQN.Y.get("q_vv_S", 0)
+            param[21] = PQN.Y.get("q_v_S", 0)
+            param[22] = PQN.Y.get("q_c_S", 0)
+            param[23] = PQN.Y.get("q_q", 0)
+            param[24] = PQN.Y.get("q_vv_L", 0)
+            param[25] = PQN.Y.get("q_v_L", 0)
+            param[26] = PQN.Y.get("q_c_L", 0)
+
+            # --- Extended u-related params (LTS/IB/PB) ---
+            # u dynamics (LTS/IB/PB)
+            param[27] = PQN.Y.get("u_v", 0)
+            param[28] = PQN.Y.get("u_u", 0)
+            param[29] = PQN.Y.get("u_c", 0)
+
+            # IB/LTS: n scaling by u threshold
+            param[30] = PQN.Y.get("ru", 0)
+            param[31] = PQN.Y.get("n_uS", 0)
+            param[32] = PQN.Y.get("n_uL", 0)
+
+            # PB: v-u coupling (already includes sign in PQN.Y['v_u'])
+            param[33] = PQN.Y.get("v_u", 0)
 
             return param
-        elif PQN.mode == "PB":
-            param = np.zeros(27, dtype=np.int32)
-
-            return param
-        elif PQN.mode == "Class2":
-            param = np.zeros(27, dtype=np.int32)
-
-            return param
-        else:
-            raise ValueError("Invalid PQN mode")
 
     def _upload_constants(self):
         # Global変数への転送
-        RSexci_param_d, _ = module.get_global("RSexci_param")
-        cuda.memcpy_htod(RSexci_param_d, self.RSexci_param_h)
-        RSinhi_param_d, _ = module.get_global("RSinhi_param")
-        cuda.memcpy_htod(RSinhi_param_d, self.RSinhi_param_h)
+        all_params = np.zeros((7, 34), dtype=np.int32)
+        
+        params = [
+            self.RSexci_param_h, 
+            self.RSinhi_param_h, 
+            self.FS_param_h, 
+            self.LTS_param_h, 
+            self.IB_param_h, 
+            self.EB_param_h, 
+            self.PB_param_h
+            ]
+        
+        for i, param in enumerate(params):
+            # --- 重要: Branchless化のためのパッチ ---
+            # LTS/IB以外の場合、param[31], param[32] (eta) が0
+            # 計算式 dn = (dn * eta) >> shift を成立させるため、
+            # eta に 1.0 (つまり 1 << shift) を代入しておく。
+            if param[31] == 0 and param[32] == 0:
+                one_scaled = 1 << param[0] # param[0] is BIT_Y_SHIFT
+                param[31] = one_scaled
+                param[32] = one_scaled
+            
+            all_params[i] = param
+
+        all_params_d, _ = module.get_global("AllParams")
+        cuda.memcpy_htod(all_params_d, all_params)
 
         dt_float32 = np.float32(self.cfg.DT)
         dt_d, _ = module.get_global("dt")
@@ -171,26 +227,32 @@ class PQN_Reservoir_GPU:
         """
         self.step_count = 0
 
-        # CPU側で初期値作成
-        Vs_h = np.full(self.N, -4906, dtype=np.int64)
-        Ns_h = np.full(self.N, 27584, dtype=np.int64)
-        Qs_h = np.full(self.N, -3692, dtype=np.int64)
-        
-        # ニューロンタイプに応じた初期値設定
-        for i in range(self.N):
-            if self.neuron_type_h[i] == 0: # Exci
-                Vs_h[i] = self.RSexci.state_variable_v
-                Ns_h[i] = self.RSexci.state_variable_n
-                Qs_h[i] = self.RSexci.state_variable_q
-            elif self.neuron_type_h[i] == 1: # Inhi
-                Vs_h[i] = self.RSinhi.state_variable_v
-                Ns_h[i] = self.RSinhi.state_variable_n
-                Qs_h[i] = self.RSinhi.state_variable_q
-
+        neuron_models = [
+            self.RSexci, # 0
+            self.RSinhi, # 1
+            self.FS,     # 2
+            self.LTS,    # 3
+            self.IB,     # 4
+            self.EB,     # 5
+            self.PB      # 6
+        ]
+        init_vs = np.array([m.state_variable_v for m in neuron_models], dtype=np.int64)
+        init_ns = np.array([m.state_variable_n for m in neuron_models], dtype=np.int64)
+        init_qs = np.array([m.state_variable_q for m in neuron_models], dtype=np.int64)
+        init_us = np.array([m.state_variable_u for m in neuron_models], dtype=np.int64)
+        Vs_h = np.zeros(self.N, dtype=np.int64)
+        Ns_h = np.zeros(self.N, dtype=np.int64)
+        Qs_h = np.zeros(self.N, dtype=np.int64)
+        Us_h = np.zeros(self.N, dtype=np.int64)
+        Vs_h = init_vs[self.neuron_type_h]
+        Ns_h = init_ns[self.neuron_type_h]
+        Qs_h = init_qs[self.neuron_type_h]
+        Us_h = init_us[self.neuron_type_h]
         # GPU転送 (Dynamic Variables)
         self.Vs_d = gpuarray.to_gpu(Vs_h)
         self.Ns_d = gpuarray.to_gpu(Ns_h)
         self.Qs_d = gpuarray.to_gpu(Qs_h)
+        self.Us_d = gpuarray.to_gpu(Us_h)
         
         # シナプス状態
         self.x_d = gpuarray.to_gpu(np.full(self.N_S, 1.0, dtype=np.float32))
@@ -241,6 +303,7 @@ class PQN_Reservoir_GPU:
             self.Vs_d.gpudata,
             self.Ns_d.gpudata,
             self.Qs_d.gpudata,
+            self.Us_d.gpudata,
             self.neuron_type_d.gpudata,
             self.I_input_d.gpudata,
             self.synapses_out_d.gpudata,
@@ -518,10 +581,10 @@ def visualize_matrix(matrix, num, cfg):
     plt.xlabel("Pre Neuron")
     plt.ylabel("Post Neuron")
     plt.tight_layout()
-    os.makedirs(f"{cfg.RESULT_DIR}/figs", exist_ok=True)
-    os.makedirs(f"{cfg.RESULT_DIR}/data", exist_ok=True)
-    plt.savefig(f"{cfg.RESULT_DIR}/figs/reservoir_weight_matrix.png")
-    np.save(f"{cfg.RESULT_DIR}/data/reservoir.npy", matrix)
+    os.makedirs(f"{RESULT_DIR}/figs", exist_ok=True)
+    os.makedirs(f"{RESULT_DIR}/data", exist_ok=True)
+    plt.savefig(f"{RESULT_DIR}/figs/reservoir_weight_matrix.png")
+    np.save(f"{RESULT_DIR}/data/reservoir.npy", matrix)
     plt.close()
 
 def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, num, cfg):
@@ -539,8 +602,8 @@ def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, num, cfg):
     ax1.set_ylabel("v")
     ax0.set_ylabel("I")
     ax1.set_xlabel("[s]")
-    os.makedirs(f"{cfg.RESULT_DIR}/figs", exist_ok=True)
-    plt.savefig(f"{cfg.RESULT_DIR}/figs/single_neuron.png")
+    os.makedirs(f"{RESULT_DIR}/figs", exist_ok=True)
+    plt.savefig(f"{RESULT_DIR}/figs/single_neuron.png")
     plt.close()
 
 def plot_raster(dt, tmax, rasters, N, num, cfg):
@@ -557,8 +620,8 @@ def plot_raster(dt, tmax, rasters, N, num, cfg):
     plt.ylim(0, N)
     plt.title("Raster Plot")
     plt.tight_layout()
-    os.makedirs(f"{cfg.RESULT_DIR}/figs", exist_ok=True)
-    os.makedirs(f"{cfg.RESULT_DIR}/data", exist_ok=True)
-    plt.savefig(f"{cfg.RESULT_DIR}/figs/raster.png")
-    np.save(f"{cfg.RESULT_DIR}/data/raster.npy", rasters)
+    os.makedirs(f"{RESULT_DIR}/figs", exist_ok=True)
+    os.makedirs(f"{RESULT_DIR}/data", exist_ok=True)
+    plt.savefig(f"{RESULT_DIR}/figs/raster.png")
+    np.save(f"{RESULT_DIR}/data/raster.npy", rasters)
     plt.close()

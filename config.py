@@ -18,12 +18,6 @@ class Config:
     N_TEST = 20                  # テストデータ数
     # 14 / 6 for spoken digit
     
-    # --- ディレクトリパス設定 ---
-    BASE_DIR = "RNN_analyze"
-    INPUT_DIR = os.path.join(BASE_DIR, "reservoir_inputs")
-    OUTPUT_DIR = os.path.join(BASE_DIR, "reservoir_outputs")
-    RESULT_DIR = os.path.join(BASE_DIR, "result")
-    
     # --- リザバー結合パラメータ ---
     RESERVOIR_CONN = 700    # 結合強度係数 (元のコードの * 0.02)
     READOUT_NODES = 60            # 読み出し層のノード数
