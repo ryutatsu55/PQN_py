@@ -51,11 +51,11 @@ def main():
     dt = 1e-4
     num_steps = int(tmax/dt)
     v = np.zeros((num_steps,N))
+    rasters = np.zeros((num_steps,N))
     input_h = np.zeros((num_steps,N), dtype=np.float32)
     buffer_size = 1001
     plot_num = 0
 
-    v = np.zeros((num_steps, N))
     buffer_size = 1001
     plot_num = 0
 
@@ -127,7 +127,7 @@ def main():
     for i in tqdm(range(num_steps)):
 
         if ( 5000 < i & i < 15000 ):
-            input_h[i] = np.float32(0.1)
+            input_h[i] = np.float32(0.12)
         else:
             input_h[i] = np.float32(0.0)
         cuda.memcpy_htod(input_d.gpudata, input_h[i])
@@ -150,9 +150,11 @@ def main():
         
         stream3.wait_for_event(event_update_neuron)        
         cuda.memcpy_dtoh_async(Vs_h, Vs_d.gpudata, stream = stream3)
+        cuda.memcpy_dtoh_async(raster_h, raster_d.gpudata, stream = stream3)
         
         stream3.synchronize()
         v[i] = Vs_h
+        rasters[i] = raster_h
 
     end = time.perf_counter()
 
@@ -162,6 +164,8 @@ def main():
     v = v/2**cell.BIT_WIDTH_FRACTIONAL
     # ---- plot simulation result ----
     plot_single_neuron(0, dt, tmax, num_steps, input_h, v, plot_num)
+    plot_num += 1
+    plot_raster(dt, tmax, rasters, plot_num)
     plot_num += 1
 
     # plt.show()
@@ -183,7 +187,7 @@ def param_h_init(PQN):
     For modes that do not use these terms, the entries remain 0 so the CUDA
     kernel behaves exactly like the old implementation.
     """
-    param = np.zeros(34, dtype=np.int32)
+    param = np.zeros(35, dtype=np.int32)
 
     # --- Common 0-26 mapping (works for RS/FS/EB/LTS/IB/PB) ---
     if PQN.mode in ["RSexci", "RSinhi", "FS", "EB", "LTS", "IB", "PB"]:
@@ -229,6 +233,9 @@ def param_h_init(PQN):
         # PB: v-u coupling (already includes sign in PQN.Y['v_u'])
         param[33] = PQN.Y.get("v_u", 0)
 
+        thresh_val = PQN.PARAM.get('v_thresh', 4) # デフォルト4
+        param[34] = int(thresh_val * (2 ** PQN.BIT_WIDTH_FRACTIONAL))
+
         return param
 
     elif PQN.mode == "Class2":
@@ -273,6 +280,23 @@ def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, num):
     if record:
         save_path = os.path.join(OUTDIR, "single_neuron.png")
         plt.savefig(save_path)
+
+def plot_raster(dt, tmax, rasters, num):
+    N = rasters.shape[1]
+    times, neuron_ids = np.nonzero(rasters)
+    times = times * dt
+
+
+    plt.figure(num=num, figsize=(9, 5))
+    plt.scatter(times, neuron_ids, s=2.0, color="blue")
+    plt.xlabel("time")
+    plt.xlim(0, tmax)
+    plt.ylabel("neuron ID")
+    plt.ylim(0, N)
+    plt.title("Raster Plot")
+    plt.tight_layout()
+    save_path = os.path.join("graphs", "raster.png")
+    plt.savefig(save_path)
 
 if __name__ == "__main__":
     # profiler = LineProfiler()

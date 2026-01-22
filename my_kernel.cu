@@ -3,7 +3,7 @@
 // 全体のスレッド数
 extern "C"
 #include <stdint.h>
-__constant__ int PQN_param[34];
+__constant__ int PQN_param[35];
 __constant__ float dt;
 __constant__ int buffer_size;
 __constant__ int num_neurons;
@@ -73,7 +73,7 @@ __global__ void update_neuron_state(
     Qs_d[tid] = q + dq;
     Us_d[tid] = u + du;
 
-    int64_t threshold = (4 << param[1]);
+    int64_t threshold = param[34];
     unsigned char current_spike = (v > threshold) ? 1 : 0;
     raster[tid] = (current_spike && !last_spike[tid]);
     // last_spike[tid] = last_spike[tid] | raster[tid];

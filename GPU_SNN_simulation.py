@@ -369,7 +369,7 @@ def param_h_init(PQN):
     For modes that do not use these terms, the entries remain 0 so the CUDA
     kernel behaves exactly like the old implementation.
     """
-    param = np.zeros(34, dtype=np.int32)
+    param = np.zeros(35, dtype=np.int32)
 
     # --- Common 0-26 mapping (works for RS/FS/EB/LTS/IB/PB) ---
     if PQN.mode in ["RSexci", "RSinhi", "FS", "EB", "LTS", "IB", "PB"]:
@@ -414,6 +414,9 @@ def param_h_init(PQN):
 
         # PB: v-u coupling (already includes sign in PQN.Y['v_u'])
         param[33] = PQN.Y.get("v_u", 0)
+
+        thresh_val = PQN.PARAM.get('v_thresh', 4) # デフォルト4
+        param[34] = int(thresh_val * (2 ** PQN.BIT_WIDTH_FRACTIONAL))
 
         return param
 

@@ -22,6 +22,7 @@ class PQNparam:
 
     # set parameters of the given mode
     def set_PARAM(self):
+        self.PARAM['v_thresh'] = 4
         if self.mode=='RSexci':
             self.PARAM['dt']=0.0001
             self.PARAM['afn']=1.5625
@@ -77,6 +78,7 @@ class PQNparam:
             self.BIT_WIDTH_FRACTIONAL=10
             self.BIT_Y_SHIFT=20
         elif self.mode=='FS':
+            self.PARAM['v_thresh'] = 0
             self.PARAM['dt']=0.0001
             self.PARAM['afn']=1.9375
             self.PARAM['afp']=-1
