@@ -52,7 +52,7 @@ class PQN_Reservoir_GPU:
         self.reservoir_state = reservoir_state
 
         # --- ホスト側(CPU) パラメータ準備 ---
-        # PBだけdtが異なるが、現在未対応
+        # TODO PBだけdtが異なるが、現在未対応
         self.neuron_type_h = reservoir_state["type"]
         self.input_indices = reservoir_state["input_indices"]
         self.output_indices = reservoir_state["output_indices"]
@@ -508,6 +508,7 @@ class PQN_Reservoir_GPU:
 # -------------------------------------------------------------
 def main(
     input_data: np.ndarray | None = None,
+    coch: bool = False,
     reservoir_state=None,
     return_feature: bool = True,
     is_debug_print: bool = False,
@@ -529,6 +530,10 @@ def main(
     else:
         # 重み行列などはそのままに、膜電位などを初期化
         sim.reset_state()
+
+    if coch:
+        sim.input_indices = reservoir_state["input_indices_coch"]
+        sim.output_indices = reservoir_state["output_indices_coch"]
 
     # ステップ数の計算
     tmax = 10

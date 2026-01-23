@@ -8,6 +8,7 @@ class Config:
     N = 240             # ニューロン総数
     DT = 0.0001
     INPUT_DT = 0.01           # タイムステップ [s] (シミュレーション用)
+    INPUT_DT_COCH = 8e-3
     SPATIO_TEMP_DT = 0.01    # タイムステップ [s] (時空間認識タスク用)
     # --- 入力データ生成設定(空間認識) ---
     DURATION_STIM = 0.1           # 刺激時間 [s]
@@ -19,8 +20,11 @@ class Config:
     # 14 / 6 for spoken digit
     
     # --- リザバー結合パラメータ ---
-    RESERVOIR_CONN = 700    # 結合強度係数 (元のコードの * 0.02)
-    READOUT_NODES = 60            # 読み出し層のノード数
+    RESERVOIR_CONN = 0.06    # 結合強度係数 (元のコードの * 0.02)
+    INPUT_NODES = 60
+    READOUT_NODES = 60
+    INPUT_NODES_COCH = 16
+    READOUT_NODES_COCH = 60            # 読み出し層のノード数
 
     SPONTANEOUS_FREQ = 0.1
     INPUT_FREQ = 10
@@ -28,28 +32,31 @@ class Config:
 def init_reservoir(seed=Config.SEED):
     N = Config.N
     seed = Config.SEED
-    input_size = N // 2
     rng = np.random.RandomState(seed)
     resovoir_origin, mask, type = create_moduled_matrix(N, rng)
     resovoir_weight = np.copy(resovoir_origin) * Config.RESERVOIR_CONN
     N_S = np.count_nonzero(resovoir_weight)
-    tau_rec_h, tau_inact_h, tau_faci_h, U1_h, U_h, mask_faci_h = synapses_init(resovoir_weight, N, N_S)
+    tau_rec_h, tau_inact_h, tau_faci_h, U1_h, U_h, mask_faci_h, tr, td = synapses_init(resovoir_weight, N, N_S)
     neuron_from_h, calc_matrix_h, neuron_to_h = calc_init(resovoir_weight, N, N_S)
     delayed_row_h = delay_init(resovoir_weight, N, N_S, mask, rng)
 
-    input_indices = np.arange(input_size)
+    input_indices = np.arange(Config.INPUT_NODES)
+    input_indices_coch = np.arange(Config.INPUT_NODES_COCH)
     # candidate_indices = np.arange(input_size, N)
     candidate_indices = np.arange(N)
     readout_num = Config.READOUT_NODES
     if len(candidate_indices) < readout_num:
         raise ValueError(f"num of neuron N={N} is too small")
-    output_indices = rng.choice(candidate_indices, readout_num, replace=False)
+    output_indices = rng.choice(candidate_indices, Config.READOUT_NODES, replace=False)
+    output_indices_coch = rng.choice(candidate_indices, Config.READOUT_NODES_COCH, replace=False)
     return {
         "N": N,
         "reservoir_weight": resovoir_origin,
         "mask": mask,
         "type": type,
         "N_S": N_S,
+        "tr" : tr,
+        "td" : td,
         "tau_rec_h": tau_rec_h,
         "tau_inact_h": tau_inact_h,
         "tau_faci_h": tau_faci_h,
@@ -62,6 +69,8 @@ def init_reservoir(seed=Config.SEED):
         "delayed_row_h": delayed_row_h,
         "input_indices": input_indices,
         "output_indices": output_indices,
+        "input_indices_coch": input_indices_coch,
+        "output_indices_coch": output_indices_coch,
     }
 
 def create_moduled_matrix(N, rng):
@@ -185,6 +194,8 @@ def create_random_matrix(N, rng):
 
 
 def synapses_init(resovoir_weight, N, N_S):
+    tr = 5e-3
+    td = 1e-1
     tau_rec = np.full(N_S, 0.5, dtype=np.float32)
     tau_inact = np.full(N_S, 0.3, dtype=np.float32)
     tau_faci = np.full(N_S, 0.53, dtype=np.float32)
@@ -203,7 +214,7 @@ def synapses_init(resovoir_weight, N, N_S):
         # if r == c and c%(N//4) < N//5:
         #     U[i] = 0.1
         #     tau_rec[i] = 0.1
-    return tau_rec, tau_inact, tau_faci, U1, U, mask_faci
+    return tau_rec, tau_inact, tau_faci, U1, U, mask_faci, tr, td
 
 
 def calc_init(resovoir_weight, N, N_S):
