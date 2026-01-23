@@ -88,12 +88,12 @@ def load_dataset_split(
                 return_feature=True,
                 is_debug_print=False,
                 N=num_of_cells,
-                record=True if i==total_files-1 else False,
+                record=True if i == total_files - 1 else False,
                 save_dir=f"audio_rc/figs",
             )
             X_train.append(feat)
             y_train.append(0)
-            
+
             filename = os.path.basename(path)  # ex: zero_01.npy
             save_path = os.path.join(zero_output, filename)
             if feat is not None:
@@ -111,12 +111,12 @@ def load_dataset_split(
                 return_feature=True,
                 is_debug_print=False,
                 N=num_of_cells,
-                record=True if i==total_files-1 else False,
+                record=True if i == total_files - 1 else False,
                 save_dir=f"audio_rc/figs",
             )
             X_train.append(feat)
             y_train.append(1)
-            
+
             filename = os.path.basename(path)  # ex: zero_01.npy
             save_path = os.path.join(one_output, filename)
             if feat is not None:
@@ -177,13 +177,13 @@ def load_dataset_split(
                 return_feature=True,
                 is_debug_print=False,
                 N=num_of_cells,
-                record=True if i==total_files-1 else False,
+                record=True if i == total_files - 1 else False,
                 save_dir=f"audio_rc/figs",
             )
             X_test.append(feat)
             y_test.append(0)
             X_test_paths.append(path)
-            
+
             filename = os.path.basename(path)  # ex: zero_01.npy
             save_path = os.path.join(zero_output, filename)
             if feat is not None:
@@ -201,13 +201,13 @@ def load_dataset_split(
                 return_feature=True,
                 is_debug_print=False,
                 N=num_of_cells,
-                record=True if i==total_files-1 else False,
+                record=True if i == total_files - 1 else False,
                 save_dir=f"audio_rc/figs",
             )
             X_test.append(feat)
             y_test.append(1)
             X_test_paths.append(path)
-            
+
             filename = os.path.basename(path)  # ex: zero_01.npy
             save_path = os.path.join(one_output, filename)
             if feat is not None:
@@ -263,7 +263,6 @@ def load_dataset_split(
 
     X_test = [X_test[i] for i in perm_test]
     y_test = [y_test[i] for i in perm_test]
-
 
     return (
         X_train,
@@ -469,7 +468,7 @@ def main_train(num_of_cells: int, seed: int) -> None:
         save_dir=f"audio_rc/figs",
         dt=0.0001,
     )
-    
+
     # after loading X_train (list of (T, M))
     Ts = [x.shape[0] for x in X_train]
     T_fixed = int(np.median(Ts))  # ← まずこれ
@@ -483,7 +482,7 @@ def main_train(num_of_cells: int, seed: int) -> None:
 
     X_train = np.stack([pad_and_flatten(x) for x in X_train])
     X_test = np.stack([pad_and_flatten(x) for x in X_test])
-    
+
     print("Train shape:", X_train.shape)
     print("Test  shape:", X_test.shape)
 
