@@ -17,6 +17,8 @@ class Config:
     
     N_TRAIN = 20                 # 学習データ数
     N_TEST = 20                  # テストデータ数
+    N_TRAIN_COCH = 14
+    N_TEST_COCH = 7
     # 14 / 6 for spoken digit
     
     # --- リザバー結合パラメータ ---
