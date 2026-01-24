@@ -4,6 +4,8 @@ import glob
 import argparse
 from datetime import datetime
 from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import gc
@@ -39,6 +41,10 @@ parser.add_argument(
          "f2m_digit: Train digit on Female, Test on Male\n"
          "z2o_gender: Train gender on Zero, Test on One\n"
          "o2z_gender: Train gender on One, Test on Zero"
+)
+parser.add_argument(
+    "--seed", type=int, default=cfg.SEED,
+    help="random seed"
 )
 parser.add_argument(
     "--overwrite", action="store_true",
@@ -91,7 +97,7 @@ def collect_file_metadata():
             subdir = cat["dir"]
             # 入力ファイル (.npy) を探す
             search_path = os.path.join(base_dir, subdir, "*.npy")
-            files = glob.glob(search_path)
+            files = sorted(glob.glob(search_path))
             
             for path in files:
                 metadata_list.append({
@@ -196,15 +202,18 @@ def get_feature_save_path(input_path, original_split, subdir_name):
 
 def process_and_load_data(items, sim, reservoir_state):
     """
-    選択されたアイテムリストに対して、以下のいずれかを行う:
-    1. 特徴量ファイルが既にあればロード (Cache Hit)
-    2. なければSNNシミュレーションを実行して保存 (Cache Miss)
+    Returns:
+        X_flat: (N, Neurons) - Integrated features for readout
+        y: (N,) - Labels
+        paths: List[str] - File paths
+        X_time: List[np.ndarray] - Raw time-series features for analysis
     """
-    X = []
+    X_flat = []
+    X_time = []
     y = []
     loaded_paths = []
 
-    for item in tqdm(items, desc="Processing"):
+    for i, item in enumerate(tqdm(items, desc="Processing")):
         input_path = item["input_path"]
         label = item["label"]
         original_split = item["split"]
@@ -212,7 +221,6 @@ def process_and_load_data(items, sim, reservoir_state):
 
         # 特徴量の保存先パスを決定
         save_path, save_dir = get_feature_save_path(input_path, original_split, subdir_name)
-
         feat = None
         
         # --- Mode: Linear (SNNを使わない) ---
@@ -220,13 +228,13 @@ def process_and_load_data(items, sim, reservoir_state):
             feat = np.load(input_path)
             # 線形の場合も pad_and_integrate をするかはタスクによるが、
             # 形式を合わせるためここでは適用する（必要に応じて変更してください）
-            feat = pad_and_integrate(feat)
+            # feat = pad_and_integrate(feat)
 
         # --- Mode: Feature (既存ファイルのみロード) ---
         elif args.mode == "feature":
             if os.path.exists(save_path):
                 feat = np.load(save_path)
-                feat = pad_and_integrate(feat)
+                # feat = pad_and_integrate(feat)
             else:
                 # featureモードなのにファイルがない場合はスキップするかエラーにする
                 # ここではスキップ
@@ -251,7 +259,7 @@ def process_and_load_data(items, sim, reservoir_state):
                     reservoir_state=reservoir_state,
                     return_feature=True,
                     is_debug_print=False,
-                    record=False,
+                    record=True if i+1 == len(items) else False,
                     S_durt=cfg.INPUT_DT_COCH if hasattr(cfg, "INPUT_DT_COCH") else 0.01,
                     cfg=cfg,
                     sim=sim
@@ -260,14 +268,124 @@ def process_and_load_data(items, sim, reservoir_state):
                 np.save(save_path, feat)
             
             # ロード/計算後に積分
-            feat = pad_and_integrate(feat)
+            # feat = pad_and_integrate(feat)
 
         if feat is not None:
-            X.append(feat)
+            X_time.append(feat)
+            X_flat.append(pad_and_integrate(feat))
             y.append(label)
             loaded_paths.append(input_path)
 
-    return np.array(X), np.array(y), loaded_paths
+    return np.array(X_flat), np.array(y), loaded_paths, X_time
+
+def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], save_dir: str, dt: float, task_name: str) -> None:
+    """
+    PCAによる軌道可視化と、クラス間・クラス内距離の計算
+    """
+    if not X_list:
+        print("No data for analysis.")
+        return
+
+    print(f"\nStarting Trajectory Analysis for task: {task_name}...")
+    
+    # 全トライアルで最小のデータ長に合わせる
+    min_len = min([x.shape[0] for x in X_list])
+    X_truncated = [x[:min_len, :] for x in X_list]
+    
+    # データを結合して正規化
+    X_concat = np.vstack(X_truncated)
+    scaler = StandardScaler()
+    X_standardized_concat = scaler.fit_transform(X_concat)
+    
+    n_trials = len(X_truncated)
+    time_steps = min_len
+    n_neurons = X_truncated[0].shape[1]
+    X_reshaped = X_standardized_concat.reshape(n_trials, time_steps, n_neurons)
+    y_arr = np.array(y_list)
+
+    # --- 1. PCA Analysis ---
+    pca = PCA(n_components=3)
+    X_pca_concat = pca.fit_transform(X_standardized_concat)
+    X_pca = X_pca_concat.reshape(n_trials, time_steps, 3)
+    
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    # クラスごとの色設定
+    class_names = get_class_names(task_name)
+    colors = ['r', 'b', 'g', 'c', 'm', 'y']
+    plotted_labels = set()
+    
+    for i in range(n_trials):
+        label_idx = int(y_arr[i])
+        c = colors[label_idx % len(colors)]
+        l = class_names[label_idx % len(class_names)]
+        
+        if label_idx not in plotted_labels:
+            ax.plot(X_pca[i, :, 0], X_pca[i, :, 1], X_pca[i, :, 2], color=c, alpha=0.6, label=l)
+            plotted_labels.add(label_idx)
+        else:
+            ax.plot(X_pca[i, :, 0], X_pca[i, :, 1], X_pca[i, :, 2], color=c, alpha=0.6)
+            
+    ax.set_xlabel('PC1')
+    ax.set_ylabel('PC2')
+    ax.set_zlabel('PC3')
+    ax.set_title(f'Trajectories in PC Subspace ({task_name})')
+    ax.legend()
+    
+    timestamp = datetime.now().strftime("%Y%m%d%H%M")
+    save_path_pca = os.path.join(save_dir, f"pca.png")
+    plt.savefig(save_path_pca)
+    plt.close()
+    print(f"Saved PCA plot to {save_path_pca}")
+
+    # --- 2. Distance Analysis ---
+    dist_same = []
+    dist_diff = []
+    
+    for i in range(n_trials):
+        for j in range(i + 1, n_trials):
+            diff = X_reshaped[i] - X_reshaped[j] 
+            dist_t = np.linalg.norm(diff, axis=1) / np.sqrt(n_neurons)
+            
+            if y_arr[i] == y_arr[j]:
+                dist_same.append(dist_t)
+            else:
+                dist_diff.append(dist_t)
+                
+    if dist_same and dist_diff:
+        dist_same = np.array(dist_same)
+        dist_diff = np.array(dist_diff)
+        
+        mean_same = dist_same.mean(axis=0)
+        std_same = dist_same.std(axis=0)
+        mean_diff = dist_diff.mean(axis=0)
+        std_diff = dist_diff.std(axis=0)
+
+        lower_diff = np.maximum(mean_diff - std_diff, 0)
+        lower_same = np.maximum(mean_same - std_same, 0)
+        
+        t_axis = np.arange(time_steps) * dt
+        
+        plt.figure(figsize=(8, 6))
+        plt.plot(t_axis, mean_diff, label='Different Class', color='blue')
+        plt.fill_between(t_axis, lower_diff, mean_diff + std_diff, color='blue', alpha=0.2)
+        
+        plt.plot(t_axis, mean_same, label='Same Class', color='red')
+        plt.fill_between(t_axis, lower_same, mean_same + std_same, color='red', alpha=0.2)
+        
+        plt.xlabel('Time (s)')
+        plt.ylabel('Normalized distance')
+        plt.title(f'Instantaneous normalized distance ({task_name})')
+        plt.legend()
+        plt.grid(True, linestyle='--', alpha=0.6)
+        
+        save_path_dist = os.path.join(save_dir, f"dist.png")
+        plt.savefig(save_path_dist)
+        plt.close()
+        print(f"Saved Distance plot to {save_path_dist}")
+    else:
+        print("Skipping distance analysis: Not enough pairs.")
 
 # ================================
 # 4. Training & Evaluation
@@ -309,7 +427,6 @@ def evaluate(W_out, X, y):
 # ================================
 # 5. Main Process
 # ================================
-# TODO PCAなどの解析が現状できない。
 def main():
     rng = np.random.RandomState(cfg.SEED)
 
@@ -340,14 +457,20 @@ def main():
 
     # 4. Process (Load Cache or Simulate)
     print("\n--- Processing Training Data ---")
-    X_train, y_train, _ = process_and_load_data(train_meta, sim, reservoir_state)
+    X_train, y_train, _, X_train_ts = process_and_load_data(train_meta, sim, reservoir_state)
 
     print("\n--- Processing Test Data ---")
-    X_test, y_test, test_paths = process_and_load_data(test_meta, sim, reservoir_state)
+    X_test, y_test, test_paths, X_test_ts = process_and_load_data(test_meta, sim, reservoir_state)
 
     if len(X_train) == 0:
         print("Error: No training data.")
         return
+    
+    save_dir_figs = "audio_rc/result/figs"
+    os.makedirs(save_dir_figs, exist_ok=True)
+    analyze_trajectories(X_train_ts, y_train, save_dir_figs, cfg.DT, args.task)
+    del X_train_ts, X_test_ts
+    gc.collect()
     
     # 5. Train & Evaluate
     print("\n--- Training Readout ---")
@@ -364,14 +487,11 @@ def main():
     num_classes = len(class_names)
     preds_test = predict(W_out, X_test)
     conf_matrix = np.zeros((num_classes, num_classes), dtype=int)
-    misclassified = []
 
     for i in range(len(y_test)):
         true_l = y_test[i]
         pred_l = preds_test[i]
         conf_matrix[true_l, pred_l] += 1
-        if true_l != pred_l:
-            misclassified.append((test_paths[i], true_l, pred_l))
 
     print("\nConfusion Matrix:")
     print(conf_matrix)
@@ -387,14 +507,14 @@ def main():
     
     for i in range(num_classes):
         for j in range(num_classes):
-            plt.text(j, i, str(conf_matrix[i, j]), ha="center", va="center", color="black", fontsize=14)
+            plt.text(j, i, str(conf_matrix[i, j]), ha="center", va="center", color="black", fontsize=16)
             
     plt.colorbar()
     plt.tight_layout()
     
-    save_fig_dir = "audio_rc/result/figs/confusion_matrix"
+    save_fig_dir = "audio_rc/result/figs"
     os.makedirs(save_fig_dir, exist_ok=True)
-    filename = f"conf_{args.task}.png"
+    filename = f"conf.png"
     plt.savefig(os.path.join(save_fig_dir, filename))
     plt.close()
     print(f"Saved confusion matrix to {os.path.join(save_fig_dir, filename)}")
@@ -405,7 +525,7 @@ def main():
     res = {
         # "timestamp": ts, 
         "task": args.task, 
-        "seed": cfg.SEED,
+        "seed": args.seed,
         "n_train_limit": getattr(cfg, "N_TRAIN", "all"),
         "acc_test": acc_test
     }
@@ -415,11 +535,11 @@ def main():
     # Save Weights
     weight_dir = "audio_rc/reservoir_outputs"
     os.makedirs(weight_dir, exist_ok=True)
-    np.save(os.path.join(weight_dir, f"W_out_{args.task}.npy"), W_out)
+    np.save(os.path.join(weight_dir, f"W_out.npy"), W_out)
     print(f"Saved weights to W_out_{args.task}.npy")
 
-    if misclassified:
-        print(f"\n{len(misclassified)} Misclassified Samples (First 5):")
+    # if misclassified:
+    #     print(f"\n{len(misclassified)} Misclassified Samples (First 5):")
         # for m in misclassified[:5]:
         #     print(f"  Path: {os.path.basename(m[0])}, True: {class_names[m[1]]}, Pred: {class_names[m[2]]}")
 

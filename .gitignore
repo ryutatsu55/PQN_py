@@ -113,4 +113,6 @@ data/*
 test/*
 data/*
 
+/TODO.txt
+
 .vscode/*
