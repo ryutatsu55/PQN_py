@@ -67,8 +67,9 @@ def analyze():
         
     # --- Phase 2: 本番計測 (手動でデータを取得) ---
     print("    Recording spontaneous activity...")
-    result = sim.run(num_steps=total_steps, record=True)
-    sim.plot_results(result, 0, cfg)
+    record={"result_dir": RESULT_DIR, "filename": "spontaneous_activity"}
+    result = sim.run(num_steps=total_steps, record=record)
+    sim.plot_results(result, 0, record)
         
     # 3. リストに保存 (copyを忘れずに)
     activity_log = result["input"]
@@ -95,37 +96,34 @@ def analyze():
     # 5. 結果の可視化
     # ==========================================
     # プロット
-    plt.figure(figsize=(12, 6))
-
-    # (A) 重み行列 (構造)
-    plt.subplot(1, 2, 1)
-    W = reservoir_state["reservoir_weight"]
-    max_w = np.max(np.abs(W))
-    # 重みは疎行列なので、見やすくするために非ゼロ要素を強調あるいはバイナリで表示
-    sns.heatmap(W, cmap="vlag", center=0, cbar=True, square=True)
-    plt.title("Structural Connectivity (Weights)")
-    plt.xlabel("Neuron From")
-    plt.ylabel("Neuron To")
-
-    # (B) 相関行列 (機能)
-    plt.subplot(1, 2, 2)
+    plt.figure(figsize=(8, 6))
     sns.heatmap(correlation_matrix, cmap="viridis", center=0.5, vmin=0, vmax=1, cbar=True, square=True)
     plt.title(f"Functional Connectivity (Correlation)\n{mean_corr:.4f}")
     plt.xlabel("Neuron ID")
     plt.ylabel("Neuron ID")
-
     plt.tight_layout()
     plt.savefig(f"{RESULT_DIR}/figs/correlation_matrix.png")
     plt.close()
     print("Plot saved to: correlation_matrix.png")
-
-    
     np.save(f"{RESULT_DIR}/data/correlation_matrix.npy", correlation_matrix)
     print("Saved correlation_matrix.npy")
+
+    # 重み行列 (構造)
+    plt.figure(figsize=(8, 6))
+    W = reservoir_state["reservoir_weight"]
+    max_w = np.max(np.abs(W))
+    sns.heatmap(W, cmap="plasma", center=0, cbar=True, square=True)           # cmap="vlag"/"plasma"
+    plt.title("Structural Connectivity (Weights)")
+    plt.xlabel("Neuron From")
+    plt.ylabel("Neuron To")
+    plt.tight_layout()
+    plt.savefig(f"{RESULT_DIR}/figs/weight_matrix.png")
+    plt.close()
+    print("Plot saved to: weight_matrix.png")
+    np.save(f"{RESULT_DIR}/data/weight_matrix.npy", W)
+    print("Saved weight_matrix.npy")
     
-    
-    
-    
+    filename = "activity_trace"
     # オマケ: 最初の数ニューロンの活動時系列を表示
     plt.figure(figsize=(12, 4))
     time_axis = np.arange(total_steps) * dt
@@ -136,9 +134,18 @@ def analyze():
     plt.ylabel("Synaptic Input Current (arb.)")
     plt.title("Sample Activity Traces")
     plt.legend(loc='upper right')
-    plt.xlim(0, 1.0) # 最初の1秒だけ拡大
+    plt.xlim(0, 30.0) # 最初の1秒だけ拡大
     plt.tight_layout()
-    plt.savefig(f"{RESULT_DIR}/figs/activity_trace.png")
+    plt.savefig(f"{RESULT_DIR}/figs/{filename}.png")
+
+    # --- データの保存 ---
+    # 保存先のディレクトリを作成
+    save_data_dir = os.path.join(RESULT_DIR, "data")
+    os.makedirs(save_data_dir, exist_ok=True)
+    #   (TimeSteps, 6)  col 0: Time, col 1: Neuron 0, col 2: Neuron 1  ...
+    data_to_save = np.column_stack((time_axis, activity_log[:, :5]))
+    save_path = os.path.join(save_data_dir, f"{filename}.npy")
+    np.save(save_path, data_to_save)
 
 if __name__ == "__main__":
     analyze()

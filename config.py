@@ -23,7 +23,7 @@ class Config:
     
     # --- リザバー結合パラメータ ---
     RESERVOIR_CONN = 0.06    # 結合強度係数 (元のコードの * 0.02)
-    INPUT_NODES = 60
+    INPUT_NODES = 120
     READOUT_NODES = 60
     INPUT_NODES_COCH = 16
     READOUT_NODES_COCH = 60            # 読み出し層のノード数

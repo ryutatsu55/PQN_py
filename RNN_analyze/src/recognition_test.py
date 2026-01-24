@@ -89,6 +89,7 @@ def load_dataset_split(
         if os.path.exists(OUTPUT_DIR):
             shutil.rmtree(OUTPUT_DIR)
         # TOP
+        record={"result_dir": RESULT_DIR, "filename": "top"}
         output_dir = os.path.join(OUTPUT_DIR, "train/top")
         os.makedirs(output_dir, exist_ok=True)
         path_list = glob.glob(os.path.join(INPUT_DIR, "train", "top", "*.npy"))
@@ -101,7 +102,7 @@ def load_dataset_split(
                 reservoir_state=reservoir_state,
                 return_feature=True,
                 is_debug_print=False,
-                record = is_last_loop,
+                record = record if is_last_loop else None,
                 S_durt=cfg.INPUT_DT,
                 cfg=cfg,
                 sim=sim,
@@ -114,6 +115,7 @@ def load_dataset_split(
             np.save(save_path, feat)
 
         # MIDDLE
+        record={"result_dir": RESULT_DIR, "filename": "middle"}
         output_dir = os.path.join(OUTPUT_DIR, "train/middle")
         os.makedirs(output_dir, exist_ok=True)
         path_list = glob.glob(os.path.join(INPUT_DIR, "train", "middle", "*.npy"))
@@ -126,7 +128,7 @@ def load_dataset_split(
                 reservoir_state=reservoir_state,
                 return_feature=True,
                 is_debug_print=False,
-                record = is_last_loop,
+                record = record if is_last_loop else None,
                 S_durt=cfg.INPUT_DT,
                 cfg=cfg,
                 sim=sim,
@@ -139,6 +141,7 @@ def load_dataset_split(
             np.save(save_path, feat)
 
         # BOTTOM
+        record={"result_dir": RESULT_DIR, "filename": "bottom"}
         output_dir = os.path.join(OUTPUT_DIR, "train/bottom")
         os.makedirs(output_dir, exist_ok=True)
         path_list = glob.glob(os.path.join(INPUT_DIR, "train", "bottom", "*.npy"))
@@ -151,7 +154,7 @@ def load_dataset_split(
                 reservoir_state=reservoir_state,
                 return_feature=True,
                 is_debug_print=False,
-                record = is_last_loop,
+                record = record if is_last_loop else None,
                 S_durt=cfg.INPUT_DT,
                 cfg=cfg,
                 sim=sim,
@@ -220,6 +223,7 @@ def load_dataset_split(
     # ----- TEST -----
     if mode == "snn":
         # TOP
+        record={"result_dir": RESULT_DIR, "filename": "top"}
         output_dir = os.path.join(OUTPUT_DIR, "test/top")
         os.makedirs(output_dir, exist_ok=True)
         path_list = glob.glob(os.path.join(INPUT_DIR, "test", "top", "*.npy"))
@@ -232,7 +236,7 @@ def load_dataset_split(
                 reservoir_state=reservoir_state,
                 return_feature=True,
                 is_debug_print=False,
-                record=is_last_loop,
+                record = record if is_last_loop else None,
                 S_durt=cfg.INPUT_DT,
                 cfg=cfg,
                 sim=sim,
@@ -246,6 +250,7 @@ def load_dataset_split(
             np.save(save_path, feat)
 
         # MIDDLE
+        record={"result_dir": RESULT_DIR, "filename": "middle"}
         output_dir = os.path.join(OUTPUT_DIR, "test/middle")
         os.makedirs(output_dir, exist_ok=True)
         path_list = glob.glob(os.path.join(INPUT_DIR, "test", "middle", "*.npy"))
@@ -258,7 +263,7 @@ def load_dataset_split(
                 reservoir_state=reservoir_state,
                 return_feature=True,
                 is_debug_print=False,
-                record=is_last_loop,
+                record = record if is_last_loop else None,
                 S_durt=cfg.INPUT_DT,
                 cfg=cfg,
                 sim=sim,
@@ -272,6 +277,7 @@ def load_dataset_split(
             np.save(save_path, feat)
 
         # BOTTOM
+        record={"result_dir": RESULT_DIR, "filename": "bottom"}
         output_dir = os.path.join(OUTPUT_DIR, "test/bottom")
         os.makedirs(output_dir, exist_ok=True)
         path_list = glob.glob(os.path.join(INPUT_DIR, "test", "bottom", "*.npy"))
@@ -284,7 +290,7 @@ def load_dataset_split(
                 reservoir_state=reservoir_state,
                 return_feature=True,
                 is_debug_print=False,
-                record=is_last_loop,
+                record = record if is_last_loop else None,
                 S_durt=cfg.INPUT_DT,
                 cfg=cfg,
                 sim=sim,
@@ -390,7 +396,7 @@ def spatial_recognition(mode: str) -> None:
     analyze_trajectories(
         X_train, 
         y_train, 
-        save_dir=f"{RESULT_DIR}/figs", 
+        save_dir=f"{RESULT_DIR}", 
         dt=cfg.DT  # または cfg.DT (シミュレーションの時間刻みに合わせてください)
     )
 
@@ -580,12 +586,6 @@ def delayed_space(mode: str) -> None:
     data = np.column_stack([t, r_train, r_test])
     np.save(f"{RESULT_DIR}/data/{filename}.npy", data)
 
-
-    # 保存
-    filename = "W_out_spatiotemp"
-    np.save(f"{RESULT_DIR}/data/{filename}.npy", W_out)
-    print(f"Saved {filename}")
-
 def apply_calcium_filter(neural_data: np.ndarray, dt: float, tau: float = 0.8) -> np.ndarray:
     """
     ニューロン活動にカルシウム蛍光の減衰ダイナミクスを適用する
@@ -669,10 +669,31 @@ def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], save_dir: 
     ax.set_title('Trajectories in PC Subspace')
     ax.legend()
     
-    save_path_pca = os.path.join(save_dir, "pca_trajectories.png")
+    save_path_pca = os.path.join(save_dir, "figs", "pca_trajectories.png")
     plt.savefig(save_path_pca)
     plt.close()
     print(f"Saved PCA plot to {save_path_pca}")
+    
+    save_data_dir = os.path.join(save_dir, "data")        
+    os.makedirs(save_data_dir, exist_ok=True)
+    
+    # データを保存用に成形 (2次元配列化)
+    # X_pca shape: (n_trials, time_steps, 3)
+    # 1. Trial ID [0, 0, ..., 1, 1, ...]
+    trial_ids = np.repeat(np.arange(n_trials), time_steps).reshape(-1, 1)
+    # 2. Time [0, dt, 2dt, ..., 0, dt, ...]
+    times = np.tile(np.arange(time_steps) * dt, n_trials).reshape(-1, 1)
+    # 3. PC1, PC2, PC3 (フラット化)
+    pcs = X_pca.reshape(-1, 3)
+    # 4. Label [0, 0, ..., 1, 1, ...]
+    labels_expanded = np.repeat(y_arr, time_steps).reshape(-1, 1)
+    # 全て結合 (N*T, 6)
+    pca_data_to_save = np.hstack((trial_ids, times, pcs, labels_expanded))
+    filename = f"pca_data.npy"
+    
+    save_path_data = os.path.join(save_data_dir, filename)
+    np.save(save_path_data, pca_data_to_save)
+    print(f"Saved PCA data to {save_path_data} (Shape: {pca_data_to_save.shape})")
 
     # ==========================================
     # 2. Distance Analysis (Fig 2D 相当)
@@ -731,10 +752,23 @@ def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], save_dir: 
     plt.legend()
     plt.grid(True, linestyle='--', alpha=0.6)
     
-    save_path_dist = os.path.join(save_dir, "distance_analysis.png")
+    save_path_dist = os.path.join(save_dir, "figs", "distance_analysis.png")
     plt.savefig(save_path_dist)
     plt.close()
     print(f"Saved Distance plot to {save_path_dist}")
+
+    # --- 距離解析データの保存 ---
+    # データを結合して 2次元配列 (TimeSteps, 5) を作成
+    # Col 0: Time [s]
+    # Col 1: Mean (Different Class)
+    # Col 2: Std  (Different Class)
+    # Col 3: Mean (Same Class)
+    # Col 4: Std  (Same Class)
+    dist_data_to_save = np.column_stack((t_axis, mean_diff, std_diff, mean_same, std_same))
+    filename = f"distance_analysis.npy"
+    save_path_npy = os.path.join(save_data_dir, filename)
+    np.save(save_path_npy, dist_data_to_save)
+    print(f"Saved distance analysis data to {save_path_npy} (Shape: {dist_data_to_save.shape})")
 
 # --- Pad sequences to T_max and flatten ---
 def pad_and_integrate(x, steps_per_trial):

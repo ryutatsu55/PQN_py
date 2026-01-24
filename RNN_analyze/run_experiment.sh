@@ -106,7 +106,7 @@ if [ -d "${DATA_SRC}" ]; then
     log_info "データを結果フォルダにアーカイブ中..."
     cp -r "${DATA_SRC}/." "${RESULTS_DIR}" 2>/dev/null || true
 fi
-設定ファイルのバックアップ (再現性の確保)
+# 設定ファイルのバックアップ (再現性の確保)
 if [ -f "${CONFIG_SRC}" ]; then
     cp "${CONFIG_SRC}" "${RESULTS_DIR}/RNN_config_snapshot.py"
     log_info "設定ファイルをスナップショットとして保存しました"

@@ -15,11 +15,6 @@ from pathlib import Path
 
 from src.PQN import PQNparam
 
-# --- ディレクトリパス設定 ---
-BASE_DIR = "RNN_analyze"
-INPUT_DIR = os.path.join(BASE_DIR, "reservoir_inputs")
-OUTPUT_DIR = os.path.join(BASE_DIR, "reservoir_outputs")
-RESULT_DIR = os.path.join(BASE_DIR, "result")
 
 # -------------------------------------------------------------
 # 1. 外部の .cu ファイルを読み込んで文字列として取得
@@ -288,7 +283,7 @@ class PQN_Reservoir_GPU:
         input_dim = len(self.reservoir_state["input_indices"])
         self.W_in = self.rng.normal(0, 1, size=(input_dim, input_dim)).astype(np.float32)
 
-    def step(self, prob_input_vector=None, record=False):
+    def step(self, prob_input_vector=None, record=None):
         """
         1ステップ分の計算を実行する
         
@@ -376,7 +371,7 @@ class PQN_Reservoir_GPU:
         # 6. 結果の取得 (Async copy)
         # 次のステップのために待機が必要な箇所を同期
         self.stream3.wait_for_event(self.evt_update_neuron)
-        if record:                                    #recordの記述について追記必要(修正予定)
+        if record is not None:                                #recordの記述について追記必要(修正予定)
             cuda.memcpy_dtoh_async(self.raster_log[j], self.raster_d.gpudata, stream=self.stream3)
             cuda.memcpy_dtoh_async(self.v_int[j], self.Vs_d.gpudata, stream=self.stream3)
         cuda.memcpy_dtoh_async(self.I_input_log[j], self.synapses_out_d.gpudata, stream=self.stream3)
@@ -402,12 +397,12 @@ class PQN_Reservoir_GPU:
         self.stream3.synchronize()
         # self.stream2.synchronize()
         # self.stream1.synchronize()
-        if record:
+        if record is not None:
             self.raster_log[j] = self.raster_log[j] | spike_in_h
 
         return None
 
-    def run(self, num_steps, input_data=None, record=False):
+    def run(self, num_steps, input_data=None, record=None):
         """
         Parameters:
             input_data: np.ndarray or None
@@ -488,7 +483,7 @@ class PQN_Reservoir_GPU:
         
         return results
 
-    def plot_results(self, results, plot_num, cfg):
+    def plot_results(self, results, plot_num, record):
 
         v = results["v"]
         rasters = results["rasters"]
@@ -497,10 +492,10 @@ class PQN_Reservoir_GPU:
         tmax = v.shape[0] * self.cfg.DT
         
         # 1. Single Neuron Plot
-        plot_single_neuron(0, self.cfg.DT, tmax, v.shape[0], inputs, v, plot_num, cfg)
+        plot_single_neuron(0, self.cfg.DT, tmax, v.shape[0], inputs, v, plot_num, record)
         
         # 2. Raster Plot
-        plot_raster(self.cfg.DT, tmax, rasters, self.N, plot_num+1, cfg)
+        plot_raster(self.cfg.DT, tmax, rasters, self.N, plot_num+1, record)
 
 
 # -------------------------------------------------------------
@@ -512,7 +507,7 @@ def main(
     reservoir_state=None,
     return_feature: bool = True,
     is_debug_print: bool = False,
-    record: bool = False,
+    record=None,
     S_durt = 1e-2,
     cfg=None,
     sim=None,
@@ -561,15 +556,15 @@ def main(
 
     # 記録モードならプロット
     plot_num = 0
-    if record:        
+    if record is not None:        
         # 可視化関数の呼び出し
         # 可視化関数はクラス外に定義されているものを再利用
         # 重み行列
-        visualize_matrix(reservoir_state["reservoir_weight"], plot_num, cfg)
-        plot_num += 1
+        # visualize_matrix(reservoir_state["reservoir_weight"], plot_num, cfg)
+        # plot_num += 1
 
         # ニューロン応答とラスター
-        sim.plot_results(results, plot_num, cfg)
+        sim.plot_results(results, plot_num, record)
 
     # return None
     if return_feature:
@@ -582,23 +577,23 @@ def main(
 # -------------------------------------------------------------
 # 4. 可視化・ヘルパー関数 (従来通り)
 # -------------------------------------------------------------
-def visualize_matrix(matrix, num, cfg):
-    plt.figure(num=num, figsize=(8, 6))
-    max_abs = np.max(np.abs(matrix))
-    im = plt.imshow(matrix, aspect="auto", cmap="plasma", vmin=-max_abs, vmax=max_abs)
-    plt.gca().invert_yaxis()
-    plt.colorbar(im, label="Weight Value")
-    plt.title("Reservoir Weight Matrix")
-    plt.xlabel("Pre Neuron")
-    plt.ylabel("Post Neuron")
-    plt.tight_layout()
-    os.makedirs(f"{RESULT_DIR}/figs", exist_ok=True)
-    os.makedirs(f"{RESULT_DIR}/data", exist_ok=True)
-    plt.savefig(f"{RESULT_DIR}/figs/reservoir_weight_matrix.png")
-    np.save(f"{RESULT_DIR}/data/reservoir.npy", matrix)
-    plt.close()
+# def visualize_matrix(matrix, num, cfg):
+#     plt.figure(num=num, figsize=(8, 6))
+#     max_abs = np.max(np.abs(matrix))
+#     im = plt.imshow(matrix, aspect="auto", cmap="plasma", vmin=-max_abs, vmax=max_abs)
+#     plt.gca().invert_yaxis()
+#     plt.colorbar(im, label="Weight Value")
+#     plt.title("Reservoir Weight Matrix")
+#     plt.xlabel("Pre Neuron")
+#     plt.ylabel("Post Neuron")
+#     plt.tight_layout()
+#     os.makedirs(f"{RESULT_DIR}/figs", exist_ok=True)
+#     os.makedirs(f"{RESULT_DIR}/data", exist_ok=True)
+#     plt.savefig(f"{RESULT_DIR}/figs/reservoir_weight_matrix.png")
+#     np.save(f"{RESULT_DIR}/data/reservoir.npy", matrix)
+#     plt.close()
 
-def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, num, cfg):
+def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, num, record):
     fig = plt.figure(num=num, figsize=(10, 4))
     spec = gridspec.GridSpec(
         ncols=1, nrows=2, figure=fig, hspace=0.1, height_ratios=[1, 4]
@@ -613,11 +608,14 @@ def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, num, cfg):
     ax1.set_ylabel("v")
     ax0.set_ylabel("I")
     ax1.set_xlabel("[s]")
-    os.makedirs(f"{RESULT_DIR}/figs", exist_ok=True)
-    plt.savefig(f"{RESULT_DIR}/figs/single_neuron.png")
+    os.makedirs(f"{record["result_dir"]}/figs", exist_ok=True)
+    plt.savefig(f"{record["result_dir"]}/figs/{record["filename"]}_MembranePotential.png")
     plt.close()
+    time_axis = np.arange(number_of_iterations) * dt
+    data_to_save = np.column_stack((time_axis, I[:, id], v0[:, id]))
+    np.save(f"{record["result_dir"]}/data/{record["filename"]}_MembranePotential.npy", data_to_save)
 
-def plot_raster(dt, tmax, rasters, N, num, cfg):
+def plot_raster(dt, tmax, rasters, N, num, record):
     times, neuron_ids = np.nonzero(rasters)
     times = times * dt
     cluster_colors = ["red", "blue", "green", "orange"]
@@ -631,8 +629,8 @@ def plot_raster(dt, tmax, rasters, N, num, cfg):
     plt.ylim(0, N)
     plt.title("Raster Plot")
     plt.tight_layout()
-    os.makedirs(f"{RESULT_DIR}/figs", exist_ok=True)
-    os.makedirs(f"{RESULT_DIR}/data", exist_ok=True)
-    plt.savefig(f"{RESULT_DIR}/figs/raster.png")
-    np.save(f"{RESULT_DIR}/data/raster.npy", rasters)
+    os.makedirs(f"{record["result_dir"]}/figs", exist_ok=True)
+    os.makedirs(f"{record["result_dir"]}/data", exist_ok=True)
+    plt.savefig(f"{record["result_dir"]}/figs/{record["filename"]}_raster.png")
+    np.save(f"{record["result_dir"]}/data/{record["filename"]}_raster.npy", rasters)
     plt.close()
