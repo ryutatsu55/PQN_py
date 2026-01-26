@@ -443,10 +443,10 @@ class PQN_Reservoir_GPU:
             # --- 入力データの更新処理 ---
             if input_data is not None:
                 if t % steps_per_frame == 0:
+                    self.prob_all[:] = prob_spontaneous
                     idx = t // steps_per_frame
                     if idx < input_data.shape[0]:
                         # 入力強度を入力確率に変換
-                        self.prob_all[:] = prob_spontaneous
                         prob_input = self.cfg.INPUT_FREQ * self.cfg.DT * input_data[idx]
                         self.prob_all[self.input_indices] += prob_input
 
@@ -508,6 +508,7 @@ def main(
     return_feature: bool = True,
     is_debug_print: bool = False,
     record=None,
+    tmax=None,
     S_durt = 1e-2,
     cfg=None,
     sim=None,
@@ -531,9 +532,8 @@ def main(
         sim.output_indices = reservoir_state["output_indices_coch"]
 
     # ステップ数の計算
-    tmax = 10
     dt = cfg.DT
-    if input_data is not None:
+    if tmax is None:
         tmax = input_data.shape[0] * S_durt
         num_steps = int(tmax / dt)
     else:

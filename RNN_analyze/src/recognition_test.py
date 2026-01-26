@@ -63,6 +63,7 @@ def main() -> None:
         shutil.rmtree(OUTPUT_DIR)
         print(f"{OUTPUT_DIR} is removed for overwrite.")
 
+    print()
     if args.classifier == "space":
         spatial_recognition(sim, reservoir_state)
     elif args.classifier == "delayed_space":
