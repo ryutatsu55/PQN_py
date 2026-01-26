@@ -7,27 +7,31 @@ class Config:
     SEED = 100           # ベースとなるシード値
     N = 240             # ニューロン総数
     DT = 0.0001
-    INPUT_DT = 0.01           # タイムステップ [s] (シミュレーション用)
+    INPUT_DT = 0.01           # タイムステップ [s] (入力データのｄｔ)
     INPUT_DT_COCH = 8e-3
-    SPATIO_TEMP_DT = 0.01    # タイムステップ [s] (時空間認識タスク用)
+    SPATIO_TEMP_DT = 0.01    # タイムステップ [s] 遅延タスク用
     # --- 入力データ生成設定(空間認識) ---
     DURATION_STIM = 0.1           # 刺激時間 [s]
-    DURATION_INTERVAL = 1.5       # 1試行の長さ [s] (spatial task)
-    INPUT_STRENGTH = 1.0          # 入力強度
+    TEACHING_DURATION = 2.5       # 教師信号時間 [s]
+    DURATION_INTERVAL = 10       # 1試行の長さ [s] (spatial task)
+    DURATION_INTERVAL_COCH = 10  # 1試行の長さ [s] (voice task)
+    INPUT_STRENGTH = 0.5          # 入力強度 [0, 1]
     
     N_TRAIN = 20                 # 学習データ数
-    N_TEST = 20                  # テストデータ数
+    N_TEST = 10                  # テストデータ数
+    N_TRAIN_COCH = 14
+    N_TEST_COCH = 6
     # 14 / 6 for spoken digit
     
     # --- リザバー結合パラメータ ---
     RESERVOIR_CONN = 0.06    # 結合強度係数 (元のコードの * 0.02)
-    INPUT_NODES = 60
+    INPUT_NODES = 120
     READOUT_NODES = 60
-    INPUT_NODES_COCH = 16
+    INPUT_NODES_COCH = 17
     READOUT_NODES_COCH = 60            # 読み出し層のノード数
 
     SPONTANEOUS_FREQ = 0.1
-    INPUT_FREQ = 10
+    INPUT_FREQ = 20
 
 def init_reservoir(seed=Config.SEED):
     N = Config.N

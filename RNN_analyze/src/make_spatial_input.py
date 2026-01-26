@@ -45,11 +45,9 @@ def make_data():
 
     # データ生成ループ (Train)
     for i in range(cfg.N_TRAIN):
-        input_data = np.zeros((entire_steps, int(N//2)), dtype=float)
+        input_data = np.zeros((stim_steps, int(N//2)), dtype=float)
         target = rng.randint(0, 3)
-        
-        # Configの強度を使用
-        input_data[:stim_steps, in_neurons[target]] = cfg.INPUT_STRENGTH
+        input_data[:, in_neurons[target]] = cfg.INPUT_STRENGTH
         
         cat = categories[target]
         save_path = os.path.join(INPUT_DIR, "train", cat, f"{i}.npy")
@@ -57,9 +55,9 @@ def make_data():
 
     # データ生成ループ (Test)
     for i in range(cfg.N_TEST):
-        input_data = np.zeros((entire_steps, int(N//2)), dtype=float)
+        input_data = np.zeros((stim_steps, int(N//2)), dtype=float)
         target = rng.randint(0, 3)
-        input_data[:stim_steps, in_neurons[target]] = cfg.INPUT_STRENGTH
+        input_data[:, in_neurons[target]] = cfg.INPUT_STRENGTH
         
         cat = categories[target]
         save_path = os.path.join(INPUT_DIR, "test", cat, f"{i}.npy")
