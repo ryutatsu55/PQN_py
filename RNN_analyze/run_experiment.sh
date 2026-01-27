@@ -35,6 +35,22 @@ fi
 BASE_DIR="RNN_analyze"
 RESULTS_DIR="${BASE_DIR}/archive/${EXP_NAME}"
 CONFIG_SRC="config.py" # 環境に合わせてパスを調整してください
+DATA_SRC="${BASE_DIR}/result"
+
+# ディレクトリ作成
+mkdir -p "${RESULTS_DIR}"
+
+# ログファイルパスの定義
+LOG_FILE="${RESULTS_DIR}/execution.log"
+
+# 以降の全出力を「画面」と「ファイル」の両方に出力する設定
+# >(tee ...) プロセス置換を使って出力を分岐
+# 2>&1 でエラー出力もログに含める
+# exec > >(tee -a "${LOG_FILE}") 2>&1
+exec > >(tee >(sed "s/"$'\033'"\[[0-9;]*m//g" >> "${LOG_FILE}")) 2>&1
+
+echo -e "${GREEN}[INFO] ログの記録を開始します: ${LOG_FILE}${RESET}"
+
 
 # --- 2. ユーティリティ関数 (Helper Functions) ---
 
@@ -64,11 +80,16 @@ trap error_handler ERR
 
 # --- 3. メイン処理 (Main Execution) ---
 
-section_header "実験を開始します: ${EXP_NAME}"
-log_info "結果出力先: ${RESULTS_DIR}"
+if [ -f "${CONFIG_SRC}" ]; then
+    cp "${CONFIG_SRC}" "${DATA_SRC}/RNN_config_snapshot.py"
+    log_info "設定ファイルをスナップショットとして保存しました"
+else
+    log_warn "設定ファイル (${CONFIG_SRC}) が見つかりません。バックアップをスキップします。"
+fi
 
-# ディレクトリ作成
-mkdir -p "${RESULTS_DIR}"
+section_header "実験を開始します: ${EXP_NAME}"
+log_info "結果出力先: ${DATA_SRC}"
+log_info "結果保存先: ${RESULTS_DIR}"
 
 # Step 1: 相関行列の解析
 section_header "Step 1: Analyzing Correlation Matrix"
@@ -100,7 +121,6 @@ section_header "Step 4: Archiving Results"
 
 # 生成されたデータや画像を結果フォルダに移動/コピー
 # (実際の保存先パスに合わせて調整してください)
-DATA_SRC="${BASE_DIR}/result"
 
 if [ -d "${DATA_SRC}" ]; then
     log_info "データを結果フォルダにアーカイブ中..."

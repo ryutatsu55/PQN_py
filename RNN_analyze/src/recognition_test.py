@@ -212,7 +212,9 @@ def load_and_process_data(items, sim, reservoir_state, dt, recorded_areas, dsec=
                 os.makedirs(save_dir, exist_ok=True)
                 
                 input_data = np.load(input_path)
-                if area not in recorded_areas:
+                if recorded_areas is None:
+                    current_record = None
+                elif area not in recorded_areas:
                     # まだ記録していないエリアなら記録用辞書を作成
                     current_record = {
                         "result_dir": RESULT_DIR,
@@ -382,10 +384,10 @@ def delayed_space(sim, reservoir_state) -> None:
     print()
     print("Processing data...")
     X_train_all, _, X_train_list, _ = load_and_process_data(
-        train_meta, sim, reservoir_state, dt, dsec="TRAIN"
+        train_meta, sim, reservoir_state, dt, recorded_areas=None, dsec="TRAIN"
     )
     X_test_all, _, X_test_list, _ = load_and_process_data(
-        test_meta, sim, reservoir_state, dt, dsec="TEST"
+        test_meta, sim, reservoir_state, dt, recorded_areas=None, dsec="TEST"
     )
 
     if len(X_train_all) == 0:

@@ -611,6 +611,7 @@ def plot_single_neuron(id, dt, tmax, number_of_iterations, I, v0, num, record):
     os.makedirs(f"{record["result_dir"]}/figs", exist_ok=True)
     plt.savefig(f"{record["result_dir"]}/figs/{record["filename"]}_MembranePotential.png")
     plt.close()
+    os.makedirs(f"{record["result_dir"]}/data", exist_ok=True)
     time_axis = np.arange(number_of_iterations) * dt
     data_to_save = np.column_stack((time_axis, I[:, id], v0[:, id]))
     np.save(f"{record["result_dir"]}/data/{record["filename"]}_MembranePotential.npy", data_to_save)
