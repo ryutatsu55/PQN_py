@@ -14,6 +14,7 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.signal import lfilter
+from scipy.optimize import curve_fit
 
 import sys
 from pathlib import Path
@@ -155,7 +156,7 @@ def get_feature_save_path(input_path, original_split, subdir_name):
     save_path = os.path.join(save_dir, filename)
     return save_path, save_dir
 
-def load_and_process_data(items, sim, reservoir_state, dt, dsec="Processing data"):
+def load_and_process_data(items, sim, reservoir_state, dt, recorded_areas, dsec="Processing data"):
     """
     Returns:
         X_flat: (N, Neurons) - Integrated features for readout
@@ -211,10 +212,15 @@ def load_and_process_data(items, sim, reservoir_state, dt, dsec="Processing data
                 os.makedirs(save_dir, exist_ok=True)
                 
                 input_data = np.load(input_path)
-                record = {
-                    "result_dir": RESULT_DIR,
-                    "filename": area,
-                }
+                if area not in recorded_areas:
+                    # まだ記録していないエリアなら記録用辞書を作成
+                    current_record = {
+                        "result_dir": RESULT_DIR,
+                        "filename": area,
+                    }
+                    recorded_areas.add(area)
+                else:
+                    current_record = None
                 feat = PQN_RNN_onGPU.main(
                     input_data=input_data,
                     coch=False,
@@ -222,7 +228,7 @@ def load_and_process_data(items, sim, reservoir_state, dt, dsec="Processing data
                     return_feature=True,
                     is_debug_print=False,
                     # record=True if i+1 == len(items) else False,
-                    record=record,
+                    record=current_record,
                     tmax=tmax,
                     S_durt=cfg.INPUT_DT,
                     cfg=cfg,
@@ -273,11 +279,12 @@ def spatial_recognition(sim, reservoir_state) -> None:
     # process Data
     print()
     print("Processing data...")
+    recorded_areas = set()
     X_train_all, Y_train_all, X_train_list, y_train_labels = load_and_process_data(
-        train_meta, sim, reservoir_state, dt, dsec="TRAIN"
+        train_meta, sim, reservoir_state, dt, recorded_areas, dsec="TRAIN"
         )
     X_test_all, Y_test_all, X_test_list, y_test_labels = load_and_process_data(
-        test_meta, sim, reservoir_state, dt, dsec="TEST"
+        test_meta, sim, reservoir_state, dt, recorded_areas, dsec="TEST"
         )
 
     # print(X_train_all.shape)
@@ -349,7 +356,7 @@ def spatial_recognition(sim, reservoir_state) -> None:
     # --- Trajectory Analysis ---
     os.makedirs(os.path.join(RESULT_DIR, "figs"), exist_ok=True)
     os.makedirs(os.path.join(RESULT_DIR, "data"), exist_ok=True)
-    analyze_trajectories(X_train_list, y_train_labels, RESULT_DIR, dt)
+    analyze_trajectories(X_train_list, y_train_labels, W_out, dt)
 
     print()
 
@@ -423,51 +430,9 @@ def delayed_space(sim, reservoir_state) -> None:
     # 記憶容量 (Memory Capacity) = Sum of R2
     mc = np.sum(r2_scores)
     print(f"\nMemory Capacity: {mc:.4f}")
+    fit_decay_constant(delays, r2_scores, mc)
 
-
-    # show graph
-    plt.figure(figsize=(8, 6))
-    plt.plot(delays, r2_scores, 'o-', label=f"MC={mc:.2f}")
-    plt.title("Memory Capacity (Timer Task)")
-    plt.xlabel("Delay tau [s]")
-    plt.ylabel("R^2 Score")
-    plt.grid(True)
-    plt.legend()
-
-    filename = "short-term-memory"
-    plt.savefig(f"{RESULT_DIR}/figs/{filename}.png")
-    plt.close()
-    print(f"Saved {filename}")
-    data = np.column_stack([delays, r2_scores])
-    np.save(f"{RESULT_DIR}/data/{filename}.npy", data)
-
-def apply_calcium_filter(neural_data: np.ndarray, dt: float, tau: float = 0.8) -> np.ndarray:
-    """
-    ニューロン活動にカルシウム蛍光の減衰ダイナミクスを適用する
-    
-    Args:
-        neural_data (np.ndarray): 形状 (Time, Neurons) の時系列データ
-        dt (float): サンプリング間隔 [s] (例: cfg.INPUT_DT)
-        tau (float): カルシウム減衰時定数 [s] (論文再現なら 0.6 ~ 1.0 程度)
-        
-    Returns:
-        np.ndarray: フィルタ適用後のデータ
-    """
-    # 減衰係数の計算 ( alpha = exp(-dt/tau) )
-    alpha = np.exp(-dt / tau)
-    
-    # フィルタ係数の設定
-    # 数式: y[t] = alpha * y[t-1] + x[t]
-    # (入力 x があると急上昇し、ない間は alpha の倍率で減衰していく)
-    b = [1.0]           # 入力側の係数
-    a = [1.0, -alpha]   # 出力(自己回帰)側の係数
-    
-    # フィルタ適用 (axis=0 は時間方向)
-    filtered_data = lfilter(b, a, neural_data, axis=0)
-    
-    return filtered_data
-
-def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], save_dir: str, dt: float) -> None:
+def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], W_out: np.ndarray, dt: float) -> None:
     """
     PCAによる軌道可視化と、クラス間・クラス内距離の計算
     """
@@ -478,25 +443,33 @@ def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], save_dir: 
     print(f"\n--- Starting Trajectory Analysis ---")
     
     # 全トライアルで最小のデータ長に合わせる
+    target_duration = 5.0
+    target_steps = int(target_duration / dt)
     min_len = min([x.shape[0] for x in X_list])
-    print(f"Truncating all trials to length: {min_len*dt:.3f} seconds")
-    X_truncated = [x[:min_len, :] for x in X_list]
+    if min_len < target_steps:
+        print(f"Warning: Data length ({min_len*dt:.2f}s) is shorter than target 5.0s. Using full length.")
+        calc_steps = min_len
+    else:
+        calc_steps = target_steps
+        print(f"Analyzing first {target_duration} seconds ({calc_steps} steps) of trajectories.")
     
+    X_truncated = [x[:calc_steps, :] for x in X_list]
+    
+    Y_list = [x @ W_out for x in X_truncated]
+    y_arr = np.array(y_list)
+
     # データを結合して正規化
-    X_concat = np.vstack(X_truncated)
+    pca = PCA(n_components=3)
     scaler = StandardScaler()
+
+    X_concat = np.vstack(X_truncated)
     X_standardized_concat = scaler.fit_transform(X_concat)
     
     n_trials = len(X_truncated)
-    time_steps = min_len
-    n_neurons = X_truncated[0].shape[1]
-    X_reshaped = X_standardized_concat.reshape(n_trials, time_steps, n_neurons)
-    y_arr = np.array(y_list)
+    X_pca_concat = pca.fit_transform(X_standardized_concat)
+    X_pca = X_pca_concat.reshape(n_trials, calc_steps, 3)
 
     # --- 1. PCA Analysis ---
-    pca = PCA(n_components=3)
-    X_pca_concat = pca.fit_transform(X_standardized_concat)
-    X_pca = X_pca_concat.reshape(n_trials, time_steps, 3)
     
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection='3d')
@@ -523,7 +496,7 @@ def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], save_dir: 
     ax.set_title(f'Trajectories in PC Subspace')
     ax.legend()
     
-    save_path_pca = os.path.join(save_dir, "figs", "pca.png")
+    save_path_pca = os.path.join(RESULT_DIR, "figs", "pca.png")
     plt.savefig(save_path_pca)
     plt.close()
     print(f"Saved PCA plot to {save_path_pca}")
@@ -531,35 +504,63 @@ def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], save_dir: 
     # データを保存用に成形 (2次元配列化)
     # X_pca shape: (n_trials, time_steps, 3)
     # 1. Trial ID [0, 0, ..., 1, 1, ...]
-    trial_ids = np.repeat(np.arange(n_trials), time_steps).reshape(-1, 1)
+    trial_ids = np.repeat(np.arange(n_trials), calc_steps).reshape(-1, 1)
     # 2. Time [0, dt, 2dt, ..., 0, dt, ...]
-    times = np.tile(np.arange(time_steps) * dt, n_trials).reshape(-1, 1)
+    times = np.tile(np.arange(calc_steps) * dt, n_trials).reshape(-1, 1)
     # 3. PC1, PC2, PC3 (フラット化)
     pcs = X_pca.reshape(-1, 3)
     # 4. Label [0, 0, ..., 1, 1, ...]
-    labels_expanded = np.repeat(y_arr, time_steps).reshape(-1, 1)
+    labels_expanded = np.repeat(y_arr, calc_steps).reshape(-1, 1)
     # 全て結合 (N*T, 6)
     pca_data_to_save = np.hstack((trial_ids, times, pcs, labels_expanded))
     filename = f"pca.npy"
     
-    save_path_data = os.path.join(save_dir, "data", filename)
+    save_path_data = os.path.join(RESULT_DIR, "data", filename)
     np.save(save_path_data, pca_data_to_save)
     print(f"Saved PCA data to {save_path_data} (Shape: {pca_data_to_save.shape})")
 
     # --- 2. Distance Analysis ---
-    dist_same = []
-    dist_diff = []
-    
-    for i in range(n_trials):
-        for j in range(i + 1, n_trials):
-            diff = X_reshaped[i] - X_reshaped[j] 
-            dist_t = np.linalg.norm(diff, axis=1) / np.sqrt(n_neurons)
-            
-            if y_arr[i] == y_arr[j]:
-                dist_same.append(dist_t)
-            else:
-                dist_diff.append(dist_t)
+    def calc_mean_distances(data_list, labels, name=""):
+        n_trials = len(data_list)
+        n_dim = data_list[0].shape[1]
+
+        data_concat = np.vstack(data_list)
+        scaler = StandardScaler()
+        data_std_concat = scaler.fit_transform(data_concat)
+        
+        data_std = data_std_concat.reshape(n_trials, calc_steps, n_dim)
+        
+        D_same_list = []
+        D_diff_list = []
+        D_same_list_t = []
+        D_diff_list_t = []
+        
+        # 全ペアの組み合わせで距離を計算
+        for i in range(n_trials):
+            for j in range(i + 1, n_trials):
+                # d(t) = ||p(t) - q(t)|| / sqrt(L)
+                diff = data_std[i] - data_std[j]
+                dist_t = np.linalg.norm(diff, axis=1) / np.sqrt(n_dim)
                 
+                D_pq = np.mean(dist_t)
+                
+                if labels[i] == labels[j]:
+                    D_same_list.append(D_pq)
+                    D_same_list_t.append(dist_t)
+                else:
+                    D_diff_list.append(D_pq)
+                    D_diff_list_t.append(dist_t)
+        
+        # 平均値を計算 (ペアが存在しない場合はNaN)
+        mean_same = np.mean(D_same_list) if D_same_list else np.nan
+        mean_diff = np.mean(D_diff_list) if D_diff_list else np.nan
+        
+        print(f"{name}: D_same={mean_same:.4f}, D_diff={mean_diff:.4f}")
+        return D_same_list_t, D_diff_list_t
+
+    calc_mean_distances(X_truncated, y_arr, name="Reservoir x(t)")
+    dist_same, dist_diff = calc_mean_distances(Y_list, y_arr, name="Output y(t)")
+
     if dist_same and dist_diff:
         dist_same = np.array(dist_same)
         dist_diff = np.array(dist_diff)
@@ -572,7 +573,7 @@ def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], save_dir: 
         lower_diff = np.maximum(mean_diff - std_diff, 0)
         lower_same = np.maximum(mean_same - std_same, 0)
         
-        t_axis = np.arange(time_steps) * dt
+        t_axis = np.arange(target_steps) * dt
         
         plt.figure(figsize=(8, 6))
         plt.plot(t_axis, mean_diff, label='Different Class', color='blue')
@@ -587,7 +588,7 @@ def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], save_dir: 
         plt.legend()
         plt.grid(True, linestyle='--', alpha=0.6)
         
-        save_path_dist = os.path.join(save_dir, "figs", "dist.png")
+        save_path_dist = os.path.join(RESULT_DIR, "figs", "dist.png")
         plt.savefig(save_path_dist)
         plt.close()
         print(f"Saved Dist plot to {save_path_dist}")
@@ -601,15 +602,83 @@ def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], save_dir: 
         # Col 4: Std  (Same Class)
         dist_data_to_save = np.column_stack((t_axis, mean_diff, std_diff, mean_same, std_same))
         filename = f"dist.npy"
-        save_path_npy = os.path.join(save_dir, "data", filename)
+        save_path_npy = os.path.join(RESULT_DIR, "data", filename)
         np.save(save_path_npy, dist_data_to_save)
         print(f"Saved Dist data to {save_path_npy} (Shape: {dist_data_to_save.shape})")
     else:
         print("Skipping distance analysis: Not enough pairs.")
 
-# ================================
-# 2. 線形 readout の学習 (ridge regression)
-# ================================
+def fit_decay_constant(delays, scores, mc):
+    """
+    決定係数の減衰カーブに指数関数をフィッティングし、減衰定数(tau)を求める
+    """
+    print("\n--- Fitting Decay Constant ---")
+    
+    # 欠損値(NaN)や無限大を除去
+    valid_mask = np.isfinite(scores)
+    t_data = delays[valid_mask]
+    y_data = scores[valid_mask]
+    
+    if len(t_data) < 3:
+        print("Not enough data points for fitting.")
+        return
+
+    # 初期値の推定 [A, tau, C]
+    # A: 最大値, tau: データ範囲の半分くらい, C: 最小値
+    p0 = [np.max(y_data), np.max(t_data)/2.0, 0.0]
+    
+    # bounds: A>0, tau>0
+    bounds = ([0, 0, -np.inf], [np.inf, np.inf, np.inf])
+
+    try:
+        popt, pcov = curve_fit(exponential_decay, t_data, y_data, p0=p0, bounds=bounds, maxfev=5000)
+        A_opt, tau_opt, C_opt = popt
+        
+        print(f"Fitted Parameters:")
+        print(f"  A (Amplitude) = {A_opt:.4f}")
+        print(f"  tau (Decay Constant) = {tau_opt:.4f} [s]")
+        print(f"  C (Offset) = {C_opt:.4f}")
+        
+        # フィッティング結果のプロット
+        plt.figure(figsize=(8, 6))
+        # 生データ
+        plt.plot(t_data, y_data, 'o-', color='blue', alpha=0.5, label=f"Measured (MC={mc:.2f})")
+        
+        # 近似曲線
+        t_fit = np.linspace(min(t_data), max(t_data), 200)
+        y_fit = exponential_decay(t_fit, *popt)
+        plt.plot(t_fit, y_fit, 'r-', linewidth=2, label=f'Fit: $\\tau_{{decay}}={tau_opt:.3f}s$')
+        
+        plt.title(f"Memory Capacity & Decay Fit")
+        plt.xlabel("Delay $\\tau$ [s]")
+        plt.ylabel("$R^2$ Score")
+        plt.legend()
+        plt.grid(True)
+        
+        filename = "short-term-memory.png"
+        save_path = os.path.join(RESULT_DIR, "figs", filename)
+        plt.savefig(save_path)
+        plt.close()
+        print(f"Saved {filename}")
+        data = np.column_stack([delays, scores])
+        np.save(f"{RESULT_DIR}/data/{filename}.npy", data)
+        
+        return tau_opt
+
+    except Exception as e:
+        print(f"Fitting failed: {e}")
+
+        plt.figure(figsize=(8, 6))
+        plt.plot(t_data, y_data, 'o-', color='blue', label=f"Measured (MC={mc:.2f})")
+        plt.title("Memory Capacity (Fitting Failed)")
+        plt.xlabel("Delay $\\tau$ [s]")
+        plt.ylabel("$R^2$ Score")
+        plt.legend()
+        plt.grid(True)
+        plt.savefig(os.path.join(RESULT_DIR, "figs", "short-term-memory.png"))
+        plt.close()
+        return None
+
 def train_readout(X, Y, lambda_reg=1.0):
     # Ridge Regression (Linear Readout)# Ridge Regression: W = (X^T X + lambda I)^-1 X^T Y
     num_features = X.shape[1]
@@ -618,10 +687,6 @@ def train_readout(X, Y, lambda_reg=1.0):
     XtY = X.T @ Y
     W_out = np.linalg.solve(XtX + lambda_reg * I, XtY)
     return W_out
-
-# ================================
-# 4. テストの精度測定
-# ================================
 
 def predict(W_out, feat, dt) -> np.intp:
     """
@@ -646,6 +711,38 @@ def calc_r2_score(y_true, y_pred):
         return 0.0
     r = corr_matrix[0, 1]
     return r ** 2
+
+def exponential_decay(t, A, tau, C):
+    """
+    指数関数モデル: y = A * exp(-t / tau) + C
+    """
+    return A * np.exp(-t / tau) + C
+
+def apply_calcium_filter(neural_data: np.ndarray, dt: float, tau: float = 0.8) -> np.ndarray:
+    """
+    ニューロン活動にカルシウム蛍光の減衰ダイナミクスを適用する
+    
+    Args:
+        neural_data (np.ndarray): 形状 (Time, Neurons) の時系列データ
+        dt (float): サンプリング間隔 [s] (例: cfg.INPUT_DT)
+        tau (float): カルシウム減衰時定数 [s] (論文再現なら 0.6 ~ 1.0 程度)
+        
+    Returns:
+        np.ndarray: フィルタ適用後のデータ
+    """
+    # 減衰係数の計算 ( alpha = exp(-dt/tau) )
+    alpha = np.exp(-dt / tau)
+    
+    # フィルタ係数の設定
+    # 数式: y[t] = alpha * y[t-1] + x[t]
+    # (入力 x があると急上昇し、ない間は alpha の倍率で減衰していく)
+    b = [1.0]           # 入力側の係数
+    a = [1.0, -alpha]   # 出力(自己回帰)側の係数
+    
+    # フィルタ適用 (axis=0 は時間方向)
+    filtered_data = lfilter(b, a, neural_data, axis=0)
+    
+    return filtered_data
 
 
 if __name__ == "__main__":
