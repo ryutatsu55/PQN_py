@@ -193,21 +193,19 @@ def select_files_for_task(metadata_list, task, rng):
 
         elif task == "m2f_digit":
             if reverse: continue
+            label = digit
             if gender == "male" and original_split == "train":
                 is_train = True
-                label = digit
             elif gender == "female" and original_split == "test":
                 is_test = True
-                label = digit
 
         elif task == "f2m_digit":
             if reverse: continue
+            label = digit
             if gender == "female" and original_split == "train":
                 is_train = True
-                label = digit
             elif gender == "male" and original_split == "test":
                 is_test = True
-                label = digit
 
         elif task == "z2o_gender":
             if reverse: continue
@@ -223,7 +221,7 @@ def select_files_for_task(metadata_list, task, rng):
 
         elif task == "reverse_f_z":
             label = 1 if reverse else 0
-            if digit == 0:
+            if digit == 0 and gender == "female":
                 if original_split == "train": is_train = True
                 elif original_split == "test": is_test = True
 
@@ -278,15 +276,20 @@ def process_and_load_data(items, sim, reservoir_state, dt, recorded_voice, desc=
     X_list = []
     Y_list = [] # ターゲット信号リスト
     y_labels = []
-    loaded_paths = []
+    class_names = []
 
     num_classes = 2
 
     for i, item in enumerate(tqdm(items, desc=desc)):
         input_path = item["input_path"]
         label = item["label"]
+        digit = item["digit"]
+        gender = item["gender"]
+        reverse = item["reverse"]
         original_split = item["split"]
         subdir_name = item["subdir_name"]
+        class_name = f"{gender}{digit}"
+        class_name = f"rev_{class_name}" if reverse else class_name
 
         # 特徴量の保存先パスを決定
         save_path, save_dir = get_feature_save_path(input_path, original_split, subdir_name)
@@ -328,8 +331,6 @@ def process_and_load_data(items, sim, reservoir_state, dt, recorded_voice, desc=
             os.makedirs(save_dir, exist_ok=True)
             
             coch = np.load(input_path)
-            class_name = f"{item['gender']}{item['digit']}"
-            class_name = f"rev_{class_name}" if item["reverse"] else class_name
             if recorded_voice is None:
                 current_record = None
             elif class_name not in recorded_voice:
@@ -363,7 +364,7 @@ def process_and_load_data(items, sim, reservoir_state, dt, recorded_voice, desc=
             # リストに追加
             X_list.append(feat)
             y_labels.append(label)
-            loaded_paths.append(input_path)
+            class_names.append(class_name)
 
             # ターゲット信号の生成 (Time, Classes)
             target = create_target_signal(n_steps, label, num_classes, dt)
@@ -375,9 +376,9 @@ def process_and_load_data(items, sim, reservoir_state, dt, recorded_voice, desc=
     else:
         X_concat, Y_concat = np.array([]), np.array([])
         
-    return X_concat, Y_concat, X_list, y_labels, loaded_paths
+    return X_concat, Y_concat, X_list, y_labels, class_names
 
-def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], save_dir: str, dt: float, task_name: str) -> None:
+def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], class_names: list[str], save_dir: str, dt: float, task_name: str) -> None:
     """
     PCAによる軌道可視化と、クラス間・クラス内距離の計算
     """
@@ -412,18 +413,22 @@ def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], save_dir: 
     ax = fig.add_subplot(111, projection='3d')
     
     # クラスごとの色設定
-    class_names = get_class_names(task_name)
-    colors = ['r', 'b', 'g', 'c', 'm', 'y']
+    colors = {
+        "female0": "r",
+        "female1": "b",
+        "male0": "g",
+        "male1": "m",
+        "rev_female0": "y",
+    }
     plotted_labels = set()
     
     for i in range(n_trials):
-        label_idx = int(y_arr[i])
-        c = colors[label_idx % len(colors)]
-        l = class_names[label_idx % len(class_names)]
+        c = colors[class_names[i]] if class_names[i] in colors else "k"
+        label = class_names[i]
         
-        if label_idx not in plotted_labels:
-            ax.plot(X_pca[i, :, 0], X_pca[i, :, 1], X_pca[i, :, 2], color=c, alpha=0.6, label=l)
-            plotted_labels.add(label_idx)
+        if label not in plotted_labels:
+            ax.plot(X_pca[i, :, 0], X_pca[i, :, 1], X_pca[i, :, 2], color=c, alpha=0.6, label=label)
+            plotted_labels.add(label)
         else:
             ax.plot(X_pca[i, :, 0], X_pca[i, :, 1], X_pca[i, :, 2], color=c, alpha=0.6)
             
@@ -566,6 +571,13 @@ def main():
     print(f"SEED: {args.seed}")
     print(f"Reservoir Cells: {cfg.N}")
 
+    save_dir = "audio_rc/result/"
+    if os.path.exists(save_dir):
+        shutil.rmtree(save_dir)
+        print(f"deleted following directory: {save_dir} ( to make new input dataset )")
+    os.makedirs(os.path.join(save_dir, "figs"), exist_ok=True)
+    os.makedirs(os.path.join(save_dir, "data"), exist_ok=True)
+
     # 1. Initialize Simulator (SNNモードの場合のみ)
     sim = None
     reservoir_state = None
@@ -596,12 +608,12 @@ def main():
     # 4. Process (Load Cache or Simulate)
     recorded_voice = set()
     print("--- Processing Training Data ---")
-    X_train_all, Y_train_all, X_train_list, y_train_labels, _ = process_and_load_data(
+    X_train_all, Y_train_all, X_train_list, y_train_labels, class_names_train = process_and_load_data(
         train_meta, sim, reservoir_state, dt, recorded_voice, desc="TRAIN"
         )
 
     print("\n--- Processing Test Data ---")
-    _, _, X_test_list, y_test_labels, _ = process_and_load_data(
+    _, _, X_test_list, y_test_labels, class_names_test = process_and_load_data(
         test_meta, sim, reservoir_state, dt, recorded_voice, desc="TEST"
         )
 
@@ -667,6 +679,11 @@ def main():
     acc_test_shuffle = test_correct_shuffle / len(y_test_labels)
     print(f"Test Accuracy (Shuffle): {acc_test_shuffle * 100:.2f}%")
     
+
+    # ====================================
+    # 6. Save Results & Analysis
+    # ====================================
+
     # Save Confusion Matrix Plot
     plt.figure(figsize=(6, 5))
     plt.imshow(conf_matrix, cmap="Blues")
@@ -683,33 +700,19 @@ def main():
     plt.colorbar()
     plt.tight_layout()
     
-    save_fig_dir = "audio_rc/result/figs"
-    os.makedirs(save_fig_dir, exist_ok=True)
     filename = f"conf.png"
-    plt.savefig(os.path.join(save_fig_dir, filename))
+    plt.savefig(os.path.join(save_dir, "figs", filename))
     plt.close()
-    print(f"Saved confusion matrix to {os.path.join(save_fig_dir, filename)}")
+    print(f"Saved confusion matrix to {os.path.join(save_dir, 'figs', filename)}")
 
-    save_dir = "audio_rc/result/"
-    os.makedirs(os.path.join(save_dir, "figs"), exist_ok=True)
-    os.makedirs(os.path.join(save_dir, "data"), exist_ok=True)
     dt = cfg.INPUT_DT_COCH if args.mode == "linear" else cfg.DT
-    analyze_trajectories(X_train_list, y_train_labels, save_dir, dt, args.task)
+    X_full_list = X_train_list + X_test_list
+    y_full_labels = y_train_labels + y_test_labels
+    full_class_names = class_names_train + class_names_test
+    analyze_trajectories(X_full_list, y_full_labels, full_class_names, save_dir, dt, args.task)
     # del X_train_list, X_test_list
     # gc.collect()
 
-   # Save JSON log
-    res_dir = "audio_rc/result"
-    os.makedirs(res_dir, exist_ok=True)
-    res = {
-        # "timestamp": ts, 
-        "task": args.task, 
-        "seed": args.seed,
-        "n_train_limit": getattr(cfg, "N_TRAIN", "all"),
-        "acc_test": acc_test
-    }
-    with open(os.path.join(res_dir, "results_snn.jsonl"), "a") as f:
-        f.write(json.dumps(res) + "\n")
 
     # Save Weights
     weight_dir = "audio_rc/reservoir_outputs"

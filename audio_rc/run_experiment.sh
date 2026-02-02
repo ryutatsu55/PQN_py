@@ -32,7 +32,7 @@ else
 fi
 
 # 結果保存ディレクトリ
-BASE_DIR="RNN_analyze"
+BASE_DIR="audio_rc"
 ARCHIVE_DIR="${BASE_DIR}/archive/${EXP_NAME}"
 CONFIG_SRC="config.py" # 環境に合わせてパスを調整してください
 RESULT_SRC="${BASE_DIR}/result"
@@ -87,52 +87,45 @@ else
     log_warn "設定ファイル (${CONFIG_SRC}) が見つかりません。バックアップをスキップします。"
 fi
 
+# --- タスク定義 ---
+TASKS=(
+    "f2f_digit" 
+    "m2m_digit" 
+    "z2z_gender" 
+    "o2o_gender" 
+    "m2f_digit" 
+    "f2m_digit" 
+    "z2o_gender" 
+    "o2z_gender" 
+    "reverse_f_z"
+)
+
 section_header "実験を開始します: ${EXP_NAME}"
+log_info "対象タスク数: ${#TASKS[@]}"
 log_info "結果出力先: ${RESULT_SRC}"
 log_info "結果保存先: ${ARCHIVE_DIR}"
 
-# Step 1: 相関行列の解析
-section_header "Step 1: Analyzing Correlation Matrix"
-log_info "Running corr_neuron.py..."
-${PYTHON_EXEC} ${BASE_DIR}/src/corr_neuron.py
+# --- メインループ ---
+for task in "${TASKS[@]}"; do
+    section_header "Running Task: ${task}"
+    
+    # 1. Pythonスクリプト実行
+    # 結果フォルダはスクリプト内で毎回初期化(削除)されます
+    PYTHONUNBUFFERED=1 ${PYTHON_EXEC} ${BASE_DIR}/src/speech_recognition.py \
+        --mode linear \
+        --task "${task}"
 
-# Step 2: データ生成
-section_header "Step 2: Input Data Generation"
-log_info "Running make_spatial_input.py..."
-${PYTHON_EXEC} ${BASE_DIR}/src/make_spatial_input.py
-
-# Step 3: 時空間認識 (SNNモード)
-section_header "Step 3: Spatial Recognition (SNN Mode)"
-log_info "Running recognition_test.py..."
-# tqdmの表示が崩れないようにPYTHONUNBUFFERED=1をつけるのがコツ
-PYTHONUNBUFFERED=1 ${PYTHON_EXEC} ${BASE_DIR}/src/recognition_test.py \
-    --mode snn \
-    --classifier both
-
-# # Step 3: 時空間認識 (Featureモード)
-# section_header "Step 3: Spatiotemporal Recognition (Feature Mode)"
-# log_info "Running spatiotemp_recognition.py..."
-# PYTHONUNBUFFERED=1 ${PYTHON_EXEC} RNN_analyze/spatiotemp_recognition.py \
-#     --mode feature\
-#     --classifier both
-
-# Step 4: 結果の集約
-section_header "Step 4: Archiving Results"
-
-# 生成されたデータや画像を結果フォルダに移動/コピー
-# (実際の保存先パスに合わせて調整してください)
-
-if [ -d "${RESULT_SRC}" ]; then
-    log_info "データを結果フォルダにアーカイブ中..."
-    cp -r "${RESULT_SRC}/." "${ARCHIVE_DIR}" 2>/dev/null || true
-fi
-# 設定ファイルのバックアップ (再現性の確保)
-if [ -f "${CONFIG_SRC}" ]; then
-    cp "${CONFIG_SRC}" "${ARCHIVE_DIR}/RNN_config_snapshot.py"
-    log_info "設定ファイルをスナップショットとして保存しました"
-else
-    log_warn "設定ファイル (${CONFIG_SRC}) が見つかりません。バックアップをスキップします。"
-fi
+    # 2. 結果の退避
+    TASK_ARCHIVE="${ARCHIVE_DIR}/${task}"
+    mkdir -p "${TASK_ARCHIVE}"
+    
+    if [ -d "${RESULT_SRC}" ]; then
+        log_info "結果をアーカイブに保存中: ${TASK_ARCHIVE}"
+        cp -r "${RESULT_SRC}/." "${TASK_ARCHIVE}"
+    else
+        echo -e "${RED}[ERROR] 結果ディレクトリが見つかりません。${RESET}"
+    fi
+done
 
 # --- 4. 完了 (Completion) ---
 

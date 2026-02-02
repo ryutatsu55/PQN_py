@@ -116,3 +116,4 @@ data/*
 /TODO.txt
 
 .vscode/*
+.VSCodeCounter/*

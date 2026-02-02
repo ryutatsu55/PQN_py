@@ -270,7 +270,7 @@ if __name__ == "__main__":
     target_dir = "audio_rc/reservoir_inputs"
     if os.path.exists(target_dir):
         shutil.rmtree(target_dir)
-        print(f"ディレクトリ {target_dir} を削除しました。")
+        print(f"deleted following directory: {target_dir} ( to make new input dataset )")
         
     audio_root = "./audio_rc/audio/"
     folders = ["train", "test"]
