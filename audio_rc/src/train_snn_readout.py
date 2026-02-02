@@ -20,6 +20,12 @@ sys.path.append(str(root_path))
 import config
 import src.PQN_RNN_onGPU as PQN_RNN_onGPU
 
+# --- ディレクトリパス設定 ---
+BASE_DIR = "audio_rc"
+INPUT_DIR = os.path.join(BASE_DIR, "reservoir_inputs")
+OUTPUT_DIR = os.path.join(BASE_DIR, "reservoir_outputs")
+RESULT_DIR = os.path.join(BASE_DIR, "result")
+
 # Load Config
 cfg = config.Config
 
@@ -27,12 +33,22 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--mode",
     choices=["snn", "feature", "linear"],
-    default="feature",
+    default="linear",
     help="snn: run SNN to compute features, feature: load saved feature .npy, linear: use cochleagram directly",
 )
 parser.add_argument(
     "--task",
-    choices=["digit", "gender", "m2f_digit", "f2m_digit", "z2o_gender", "o2z_gender"],
+    choices=[
+        "f2f_digit", 
+        "m2m_digit", 
+        "z2z_gender", 
+        "o2o_gender", 
+        "m2f_digit", 
+        "f2m_digit", 
+        "z2o_gender", 
+        "o2z_gender", 
+        "reverse_f_z"]
+        ,
     default="digit",
     help="Select the recognition task.\n"
          "digit: 0 vs 1 (mixed gender)\n"
@@ -45,10 +61,6 @@ parser.add_argument(
 parser.add_argument(
     "--seed", type=int, default=cfg.SEED,
     help="random seed"
-)
-parser.add_argument(
-    "--overwrite", action="store_true",
-    help="If True, re-calculate SNN even if feature file exists."
 )
 args = parser.parse_args()
 
@@ -72,7 +84,32 @@ def get_class_names(task):
         return ["Zero", "One"]
     elif "gender" in task:
         return ["Female", "Male"]
+    elif "reverse_f_z" in task:
+        return ["Forward", "Reverse"]
     return ["Class 0", "Class 1"]
+
+def create_target_signal(n_steps, label, num_classes, dt):
+    """
+    論文準拠のターゲット信号を作成する
+    - 形状: (n_steps, num_classes)
+    - 刺激開始から 2.5秒間 は 1.0、それ以外は 0.0
+    """
+    target = np.zeros((n_steps, num_classes), dtype=np.float32)
+    
+    # 2.5秒分のステップ数
+    duration_sec = cfg.TEACHING_DURATION
+    active_steps = int(duration_sec / dt)
+    
+    # 配列の長さを超えないようにクリップ
+    end_idx = min(active_steps, n_steps)
+    
+    # 正解クラスの列を 1.0 に設定
+    target[:end_idx, label] = 1.0
+    
+    # print(f"{end_idx*dt} [s]")
+    # print(f"{n_steps*dt} [s]")
+    
+    return target
 
 # ================================
 # 2. Data Loading & Labeling Logic
@@ -84,10 +121,14 @@ def collect_file_metadata():
     }
     # カテゴリ定義 (ディレクトリ名 -> 属性)
     categories = [
-        {"dir": "coch_female_zero", "gender": "female", "digit": 0},
-        {"dir": "coch_female_one",  "gender": "female", "digit": 1},
-        {"dir": "coch_male_zero",   "gender": "male",   "digit": 0},
-        {"dir": "coch_male_one",    "gender": "male",   "digit": 1},
+        {"dir": "coch_female_zero", "gender": "female", "digit": 0, "reverse": False},
+        {"dir": "coch_female_one",  "gender": "female", "digit": 1, "reverse": False},
+        {"dir": "coch_male_zero",   "gender": "male",   "digit": 0, "reverse": False},
+        {"dir": "coch_male_one",    "gender": "male",   "digit": 1, "reverse": False},
+        {"dir": "rev_coch_female_zero", "gender": "female", "digit": 0, "reverse": True},
+        {"dir": "rev_coch_female_one",  "gender": "female", "digit": 1, "reverse": True},
+        {"dir": "rev_coch_male_zero",   "gender": "male",   "digit": 0, "reverse": True},
+        {"dir": "rev_coch_male_one",    "gender": "male",   "digit": 1, "reverse": True},
     ]
 
     metadata_list = []
@@ -104,6 +145,7 @@ def collect_file_metadata():
                     "input_path": path,
                     "gender": cat["gender"],
                     "digit": cat["digit"],
+                    "reverse": cat["reverse"],
                     "split": split, # original split ('train' or 'test')
                     "subdir_name": subdir # 保存先ディレクトリ作成用
                 })
@@ -117,6 +159,7 @@ def select_files_for_task(metadata_list, task, rng):
     for item in metadata_list:
         gender = item["gender"]
         digit = item["digit"]
+        reverse = item["reverse"]
         original_split = item["split"]
         
         is_train = False
@@ -124,17 +167,32 @@ def select_files_for_task(metadata_list, task, rng):
         label = -1
 
         # --- Task Logic (振り分けルール) ---
-        if task == "digit":
+        if task == "f2f_digit":
+            if reverse: continue
             label = digit
-            if original_split == "train": is_train = True
-            elif original_split == "test": is_test = True
+            if gender == "female" and original_split == "train": is_train = True
+            elif gender == "female" and original_split == "test": is_test = True
+        
+        elif task == "m2m_digit":
+            if reverse: continue
+            label = digit
+            if gender == "male" and original_split == "train": is_train = True
+            elif gender == "male" and original_split == "test": is_test = True
 
-        elif task == "gender":
+        elif task == "z2z_gender":
+            if reverse: continue
             label = 0 if gender == "female" else 1
-            if original_split == "train": is_train = True
-            elif original_split == "test": is_test = True
+            if digit == 0 and original_split == "train": is_train = True
+            elif digit == 0 and original_split == "test": is_test = True
+
+        elif task == "o2o_gender":
+            if reverse: continue
+            label = 0 if gender == "female" else 1
+            if digit == 1 and original_split == "train": is_train = True
+            elif digit == 1 and original_split == "test": is_test = True
 
         elif task == "m2f_digit":
+            if reverse: continue
             if gender == "male" and original_split == "train":
                 is_train = True
                 label = digit
@@ -143,6 +201,7 @@ def select_files_for_task(metadata_list, task, rng):
                 label = digit
 
         elif task == "f2m_digit":
+            if reverse: continue
             if gender == "female" and original_split == "train":
                 is_train = True
                 label = digit
@@ -151,14 +210,22 @@ def select_files_for_task(metadata_list, task, rng):
                 label = digit
 
         elif task == "z2o_gender":
+            if reverse: continue
             label = 0 if gender == "female" else 1
             if digit == 0 and original_split == "train": is_train = True
             elif digit == 1 and original_split == "test": is_test = True
 
         elif task == "o2z_gender":
+            if reverse: continue
             label = 0 if gender == "female" else 1
             if digit == 1 and original_split == "train": is_train = True
             elif digit == 0 and original_split == "test": is_test = True
+
+        elif task == "reverse_f_z":
+            label = 1 if reverse else 0
+            if digit == 0:
+                if original_split == "train": is_train = True
+                elif original_split == "test": is_test = True
 
         # ラベル情報を付与してリストに追加
         if is_train:
@@ -200,7 +267,7 @@ def get_feature_save_path(input_path, original_split, subdir_name):
     save_path = os.path.join(save_dir, filename)
     return save_path, save_dir
 
-def process_and_load_data(items, sim, reservoir_state):
+def process_and_load_data(items, sim, reservoir_state, dt, recorded_voice, desc="Processing data"):
     """
     Returns:
         X_flat: (N, Neurons) - Integrated features for readout
@@ -208,12 +275,14 @@ def process_and_load_data(items, sim, reservoir_state):
         paths: List[str] - File paths
         X_time: List[np.ndarray] - Raw time-series features for analysis
     """
-    X_flat = []
-    X_time = []
-    y = []
+    X_list = []
+    Y_list = [] # ターゲット信号リスト
+    y_labels = []
     loaded_paths = []
 
-    for i, item in enumerate(tqdm(items, desc="Processing")):
+    num_classes = 2
+
+    for i, item in enumerate(tqdm(items, desc=desc)):
         input_path = item["input_path"]
         label = item["label"]
         original_split = item["split"]
@@ -223,18 +292,31 @@ def process_and_load_data(items, sim, reservoir_state):
         save_path, save_dir = get_feature_save_path(input_path, original_split, subdir_name)
         feat = None
         
+        tmax = None
+        n_steps = None
+        if hasattr(cfg, "DURATION_INTERVAL_COCH"):
+            if original_split == "train":
+                tmax = cfg.DURATION_INTERVAL_COCH
+                n_steps = int(tmax / dt) 
+            else:
+                tmax = cfg.TEACHING_DURATION
+                n_steps = int(tmax / dt)
+        
         # --- Mode: Linear (SNNを使わない) ---
         if args.mode == "linear":
             feat = np.load(input_path)
-            # 線形の場合も pad_and_integrate をするかはタスクによるが、
-            # 形式を合わせるためここでは適用する（必要に応じて変更してください）
-            # feat = pad_and_integrate(feat)
+            current_len = feat.shape[0]
+            n_steps = current_len if n_steps is None else n_steps
+            if current_len < n_steps:
+                padding = np.zeros((n_steps - current_len, feat.shape[1]))
+                feat = np.vstack([feat, padding])
+            else:
+                feat = feat[:n_steps]
 
         # --- Mode: Feature (既存ファイルのみロード) ---
         elif args.mode == "feature":
             if os.path.exists(save_path):
                 feat = np.load(save_path)
-                # feat = pad_and_integrate(feat)
             else:
                 # featureモードなのにファイルがない場合はスキップするかエラーにする
                 # ここではスキップ
@@ -243,40 +325,57 @@ def process_and_load_data(items, sim, reservoir_state):
 
         # --- Mode: SNN (シミュレーション + キャッシング) ---
         elif args.mode == "snn":
-            # キャッシュチェック
-            if os.path.exists(save_path) and not args.overwrite:
-                # キャッシュがあればロード
-                feat = np.load(save_path)
-            else:
-                # キャッシュがない、または上書き指定なら計算
-                os.makedirs(save_dir, exist_ok=True)
-                
-                coch = np.load(input_path)
-                # SNN実行
-                feat = PQN_RNN_onGPU.main(
-                    input_data=coch,
-                    coch=True,
-                    reservoir_state=reservoir_state,
-                    return_feature=True,
-                    is_debug_print=False,
-                    record=True if i+1 == len(items) else False,
-                    S_durt=cfg.INPUT_DT_COCH if hasattr(cfg, "INPUT_DT_COCH") else 0.01,
-                    cfg=cfg,
-                    sim=sim
-                )
-                # 保存（生の時系列特徴量を保存しておく）
-                np.save(save_path, feat)
+            os.makedirs(save_dir, exist_ok=True)
             
-            # ロード/計算後に積分
-            # feat = pad_and_integrate(feat)
-
+            coch = np.load(input_path)
+            class_name = f"{item['gender']}{item['digit']}"
+            class_name = f"rev_{class_name}" if item["reverse"] else class_name
+            if recorded_voice is None:
+                current_record = None
+            elif class_name not in recorded_voice:
+                current_record = {
+                    "result_dir": RESULT_DIR,
+                    "filename": class_name,
+                }
+                # print("Recording class:", class_name)
+                recorded_voice.add(class_name)
+            else:
+                current_record = None
+            feat = PQN_RNN_onGPU.main(
+                input_data=coch,
+                coch=True,
+                reservoir_state=reservoir_state,
+                return_feature=True,
+                is_debug_print=False,
+                # record=True if i+1 == len(items) else False,
+                record=current_record,
+                tmax=tmax if tmax is not None else None,
+                S_durt=cfg.INPUT_DT_COCH if hasattr(cfg, "INPUT_DT_COCH") else 0.01,
+                cfg=cfg,
+                sim=sim
+            )
+            # 保存（生の時系列特徴量を保存しておく）
+            np.save(save_path, feat)
+            
         if feat is not None:
-            X_time.append(feat)
-            X_flat.append(pad_and_integrate(feat))
-            y.append(label)
+            n_steps = feat.shape[0]
+            
+            # リストに追加
+            X_list.append(feat)
+            y_labels.append(label)
             loaded_paths.append(input_path)
 
-    return np.array(X_flat), np.array(y), loaded_paths, X_time
+            # ターゲット信号の生成 (Time, Classes)
+            target = create_target_signal(n_steps, label, num_classes, dt)
+            Y_list.append(target)
+    # 結合 (学習用)
+    if len(X_list) > 0:
+        X_concat = np.vstack(X_list)
+        Y_concat = np.vstack(Y_list)
+    else:
+        X_concat, Y_concat = np.array([]), np.array([])
+        
+    return X_concat, Y_concat, X_list, y_labels, loaded_paths
 
 def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], save_dir: str, dt: float, task_name: str) -> None:
     """
@@ -286,10 +385,11 @@ def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], save_dir: 
         print("No data for analysis.")
         return
 
-    print(f"\nStarting Trajectory Analysis for task: {task_name}...")
+    print(f"\n--- Starting Trajectory Analysis for task: {task_name} ---")
     
     # 全トライアルで最小のデータ長に合わせる
     min_len = min([x.shape[0] for x in X_list])
+    print(f"Truncating all trials to length: {min_len*dt:.3f} seconds")
     X_truncated = [x[:min_len, :] for x in X_list]
     
     # データを結合して正規化
@@ -333,11 +433,28 @@ def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], save_dir: 
     ax.set_title(f'Trajectories in PC Subspace ({task_name})')
     ax.legend()
     
-    timestamp = datetime.now().strftime("%Y%m%d%H%M")
-    save_path_pca = os.path.join(save_dir, f"pca.png")
+    save_path_pca = os.path.join(save_dir, "figs", "pca.png")
     plt.savefig(save_path_pca)
     plt.close()
     print(f"Saved PCA plot to {save_path_pca}")
+    
+    # データを保存用に成形 (2次元配列化)
+    # X_pca shape: (n_trials, time_steps, 3)
+    # 1. Trial ID [0, 0, ..., 1, 1, ...]
+    trial_ids = np.repeat(np.arange(n_trials), time_steps).reshape(-1, 1)
+    # 2. Time [0, dt, 2dt, ..., 0, dt, ...]
+    times = np.tile(np.arange(time_steps) * dt, n_trials).reshape(-1, 1)
+    # 3. PC1, PC2, PC3 (フラット化)
+    pcs = X_pca.reshape(-1, 3)
+    # 4. Label [0, 0, ..., 1, 1, ...]
+    labels_expanded = np.repeat(y_arr, time_steps).reshape(-1, 1)
+    # 全て結合 (N*T, 6)
+    pca_data_to_save = np.hstack((trial_ids, times, pcs, labels_expanded))
+    filename = f"pca_data.npy"
+    
+    save_path_data = os.path.join(save_dir, "data", filename)
+    np.save(save_path_data, pca_data_to_save)
+    print(f"Saved PCA data to {save_path_data} (Shape: X_pca shape: (n_trials, time_steps, 3))")
 
     # --- 2. Distance Analysis ---
     dist_same = []
@@ -380,10 +497,23 @@ def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], save_dir: 
         plt.legend()
         plt.grid(True, linestyle='--', alpha=0.6)
         
-        save_path_dist = os.path.join(save_dir, f"dist.png")
+        save_path_dist = os.path.join(save_dir, "figs", "dist.png")
         plt.savefig(save_path_dist)
         plt.close()
         print(f"Saved Distance plot to {save_path_dist}")
+
+        # --- 距離解析データの保存 ---
+        # データを結合して 2次元配列 (TimeSteps, 5) を作成
+        # Col 0: Time [s]
+        # Col 1: Mean (Different Class)
+        # Col 2: Std  (Different Class)
+        # Col 3: Mean (Same Class)
+        # Col 4: Std  (Same Class)
+        dist_data_to_save = np.column_stack((t_axis, mean_diff, std_diff, mean_same, std_same))
+        filename = f"distance_analysis.npy"
+        save_path_npy = os.path.join(save_dir, "data", filename)
+        np.save(save_path_npy, dist_data_to_save)
+        print(f"Saved distance analysis data to {save_path_npy} (Shape: {dist_data_to_save.shape})")
     else:
         print("Skipping distance analysis: Not enough pairs.")
 
@@ -391,47 +521,49 @@ def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], save_dir: 
 # 4. Training & Evaluation
 # ================================
 
-def train_readout(X, y, lambda_reg=1.0):
+def train_readout(X, Y, lambda_reg=1.0):
     # Ridge Regression (Linear Readout)
     # W_out = (X^T X + lambda I)^-1 X^T y
     # X shape: (Samples, Neurons)
     # y (one-hot) shape: (Samples, Classes)
     
     num_samples, num_features = X.shape
-    classes = np.unique(y)
+    classes = np.unique(Y)
     num_classes = len(classes)
 
-    # Make One-hot targets
-    Y_onehot = np.zeros((num_samples, num_classes))
-    for i, label in enumerate(y):
-        Y_onehot[i, label] = 1.0
+    # # Make One-hot targets
+    # Y_onehot = np.zeros((num_samples, num_classes))
+    # for i, label in enumerate(y):
+    #     Y_onehot[i, label] = 1.0
 
     # Normal Equation
     I = np.eye(num_features)
     XtX = X.T @ X
-    XtY = X.T @ Y_onehot
+    XtY = X.T @ Y
     
     # Solve
     W_out = np.linalg.solve(XtX + lambda_reg * I, XtY)
     return W_out
 
 def predict(W_out, X):
-    logits = X @ W_out
-    return np.argmax(logits, axis=1)
+    y_seq = X @ W_out
+    y_integrated = y_seq.sum(axis=0)
+    return np.argmax(y_integrated, axis=0)
 
-def evaluate(W_out, X, y):
-    preds = predict(W_out, X)
-    acc = np.mean(preds == y)
-    return acc
+# def evaluate(W_out, X, y):
+#     preds = predict(W_out, X)
+#     acc = np.mean(preds == y)
+#     return acc
 
 # ================================
 # 5. Main Process
 # ================================
 def main():
-    rng = np.random.RandomState(cfg.SEED)
+    rng = np.random.RandomState(args.seed)
 
     print(f"Mode: {args.mode}")
     print(f"Task: {args.task}")
+    print(f"SEED: {args.seed}")
     print(f"Reservoir Cells: {cfg.N}")
 
     # 1. Initialize Simulator (SNNモードの場合のみ)
@@ -439,8 +571,9 @@ def main():
     reservoir_state = None
     if args.mode == "snn":
         print("Initializing Reservoir...")
-        reservoir_state = config.init_reservoir()
+        reservoir_state = config.init_reservoir(args.seed)
         sim = PQN_RNN_onGPU.PQN_Reservoir_GPU(reservoir_state, cfg)
+    dt = cfg.INPUT_DT_COCH if args.mode == "linear" else cfg.DT
 
     # 2. Collect Metadata (No heavy loading yet)
     print("\n--- Scanning Files ---")
@@ -455,46 +588,84 @@ def main():
     print(f"Selected Train: {len(train_meta)}")
     print(f"Selected Test:  {len(test_meta)}")
 
+    rmv_dir = "audio_rc/reservoir_outputs"
+    if os.path.exists(rmv_dir) and args.mode == "snn":
+        shutil.rmtree(rmv_dir)
+        print(f"\n特徴量上書きのためディレクトリ {rmv_dir} を削除しました。")
+
     # 4. Process (Load Cache or Simulate)
-    print("\n--- Processing Training Data ---")
-    X_train, y_train, _, X_train_ts = process_and_load_data(train_meta, sim, reservoir_state)
+    recorded_voice = set()
+    print("--- Processing Training Data ---")
+    X_train_all, Y_train_all, X_train_list, y_train_labels, _ = process_and_load_data(
+        train_meta, sim, reservoir_state, dt, recorded_voice, desc="TRAIN"
+        )
 
     print("\n--- Processing Test Data ---")
-    X_test, y_test, test_paths, X_test_ts = process_and_load_data(test_meta, sim, reservoir_state)
+    _, _, X_test_list, y_test_labels, _ = process_and_load_data(
+        test_meta, sim, reservoir_state, dt, recorded_voice, desc="TEST"
+        )
 
-    if len(X_train) == 0:
+    if len(Y_train_all) == 0:
         print("Error: No training data.")
         return
     
-    save_dir_figs = "audio_rc/result/figs"
-    os.makedirs(save_dir_figs, exist_ok=True)
-    analyze_trajectories(X_train_ts, y_train, save_dir_figs, cfg.DT, args.task)
-    del X_train_ts, X_test_ts
-    gc.collect()
-    
+
     # 5. Train & Evaluate
+    print("\n--- Testing with Temporal Integration ---")
+    train_correct = 0
+    test_correct = 0
+    conf_matrix = np.zeros((2, 2), dtype=int)
     print("\n--- Training Readout ---")
-    W_out = train_readout(X_train, y_train, lambda_reg=1e-2)
+    W_out = train_readout(X_train_all, Y_train_all, lambda_reg=1.0)
 
-    acc_train = evaluate(W_out, X_train, y_train)
-    acc_test = evaluate(W_out, X_test, y_test)
 
+    for i, x_trial in enumerate(X_train_list):
+        pred = predict(W_out, x_trial)
+        true_label = y_train_labels[i]
+        if pred == true_label:
+            train_correct += 1
+    for i, x_trial in enumerate(X_test_list):
+        pred = predict(W_out, x_trial)
+        true_label = y_test_labels[i]
+        
+        conf_matrix[true_label, pred] += 1
+        if pred == true_label:
+            test_correct += 1
+
+    acc_train = train_correct / len(y_train_labels)
+    acc_test = test_correct / len(y_test_labels)
     print(f"Train Accuracy: {acc_train * 100:.2f}%")
-    print(f"Test Accuracy:  {acc_test * 100:.2f}%")
-
-    # 6. Confusion Matrix & Save (Brief version)
+    print(f"Test Accuracy: {acc_test * 100:.2f}%")
+    print("Confusion Matrix:")
+    print(conf_matrix)
+    
     class_names = get_class_names(args.task)
     num_classes = len(class_names)
-    preds_test = predict(W_out, X_test)
-    conf_matrix = np.zeros((num_classes, num_classes), dtype=int)
 
-    for i in range(len(y_test)):
-        true_l = y_test[i]
-        pred_l = preds_test[i]
-        conf_matrix[true_l, pred_l] += 1
+    print("--- Training Readout (Shuffle Control) ---")
+    y_train_labels_shuffle = list(y_train_labels)
+    rng.shuffle(y_train_labels_shuffle)
+    Y_train_shuffle_list = []
 
-    print("\nConfusion Matrix:")
-    print(conf_matrix)
+    for i, x_feat in enumerate(X_train_list):
+        n_steps = x_feat.shape[0]
+        shuffled_label = y_train_labels_shuffle[i]
+        target_shuffled = create_target_signal(n_steps, shuffled_label, num_classes, dt)
+        Y_train_shuffle_list.append(target_shuffled)
+        
+    Y_train_shuffle_all = np.vstack(Y_train_shuffle_list)
+    
+    W_out_shuffle = train_readout(X_train_all, Y_train_shuffle_all, lambda_reg=1.0)
+
+    test_correct_shuffle = 0
+    for i, x_trial in enumerate(X_test_list):
+        pred = predict(W_out_shuffle, x_trial)
+        true_label = y_test_labels[i]
+        if pred == true_label:
+            test_correct_shuffle += 1
+            
+    acc_test_shuffle = test_correct_shuffle / len(y_test_labels)
+    print(f"Test Accuracy (Shuffle): {acc_test_shuffle * 100:.2f}%")
     
     # Save Confusion Matrix Plot
     plt.figure(figsize=(6, 5))
@@ -519,6 +690,14 @@ def main():
     plt.close()
     print(f"Saved confusion matrix to {os.path.join(save_fig_dir, filename)}")
 
+    save_dir = "audio_rc/result/"
+    os.makedirs(os.path.join(save_dir, "figs"), exist_ok=True)
+    os.makedirs(os.path.join(save_dir, "data"), exist_ok=True)
+    dt = cfg.INPUT_DT_COCH if args.mode == "linear" else cfg.DT
+    analyze_trajectories(X_train_list, y_train_labels, save_dir, dt, args.task)
+    # del X_train_list, X_test_list
+    # gc.collect()
+
    # Save JSON log
     res_dir = "audio_rc/result"
     os.makedirs(res_dir, exist_ok=True)
@@ -536,7 +715,8 @@ def main():
     weight_dir = "audio_rc/reservoir_outputs"
     os.makedirs(weight_dir, exist_ok=True)
     np.save(os.path.join(weight_dir, f"W_out.npy"), W_out)
-    print(f"Saved weights to W_out_{args.task}.npy")
+    np.save(os.path.join("audio_rc/result/data", f"W_out.npy"), W_out)
+    print(f"Saved weights to W_out.npy")
 
     # if misclassified:
     #     print(f"\n{len(misclassified)} Misclassified Samples (First 5):")

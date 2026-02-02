@@ -44,20 +44,24 @@ parser.add_argument(
     default="linear",
     help="snn: run SNN to compute features, feature: load saved feature .npy, linear: use cochleagram directly",
 )
+parser.add_argument(
+    "--seed", type=int, default=cfg.SEED,
+    help="random seed"
+)
 args = parser.parse_args()
 
 
 def main() -> None:
     print(f"Mode: {args.mode}")
     print(f"Number of reservoir cells: {cfg.N}")
-    print(f"Random seed: {cfg.SEED}")
+    print(f"Random seed: {args.seed}")
     print()
 
     reservoir_state = None
     sim = None
     if args.mode == "snn":
         print("Initializing Reservoir...")
-        reservoir_state = config.init_reservoir()
+        reservoir_state = config.init_reservoir(args.seed)
         sim = PQN_RNN_onGPU.PQN_Reservoir_GPU(reservoir_state, cfg)
 
     if args.mode == "snn" and os.path.exists(OUTPUT_DIR):
@@ -259,7 +263,7 @@ def load_and_process_data(items, sim, reservoir_state, dt, recorded_areas, dsec=
     return X_concat, Y_concat, X_list, np.array(y_labels)
 
 def spatial_recognition(sim, reservoir_state) -> None:
-    rng = np.random.RandomState(cfg.SEED)
+    rng = np.random.RandomState(args.seed)
     dt = cfg.INPUT_DT if args.mode == "linear" else cfg.DT
     print("======== Spatial Recognition Task ========")
 
@@ -363,7 +367,7 @@ def spatial_recognition(sim, reservoir_state) -> None:
     print()
 
 def delayed_space(sim, reservoir_state) -> None:
-    rng = np.random.RandomState(cfg.SEED)
+    rng = np.random.RandomState(args.seed)
     dt = cfg.INPUT_DT if args.mode == "linear" else cfg.DT
     print("======== Delayed Space Task ========")
 
@@ -575,7 +579,7 @@ def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], W_out: np.
         lower_diff = np.maximum(mean_diff - std_diff, 0)
         lower_same = np.maximum(mean_same - std_same, 0)
         
-        t_axis = np.arange(target_steps) * dt
+        t_axis = np.arange(calc_steps) * dt
         
         plt.figure(figsize=(8, 6))
         plt.plot(t_axis, mean_diff, label='Different Class', color='blue')
@@ -719,33 +723,6 @@ def exponential_decay(t, A, tau, C):
     指数関数モデル: y = A * exp(-t / tau) + C
     """
     return A * np.exp(-t / tau) + C
-
-def apply_calcium_filter(neural_data: np.ndarray, dt: float, tau: float = 0.8) -> np.ndarray:
-    """
-    ニューロン活動にカルシウム蛍光の減衰ダイナミクスを適用する
-    
-    Args:
-        neural_data (np.ndarray): 形状 (Time, Neurons) の時系列データ
-        dt (float): サンプリング間隔 [s] (例: cfg.INPUT_DT)
-        tau (float): カルシウム減衰時定数 [s] (論文再現なら 0.6 ~ 1.0 程度)
-        
-    Returns:
-        np.ndarray: フィルタ適用後のデータ
-    """
-    # 減衰係数の計算 ( alpha = exp(-dt/tau) )
-    alpha = np.exp(-dt / tau)
-    
-    # フィルタ係数の設定
-    # 数式: y[t] = alpha * y[t-1] + x[t]
-    # (入力 x があると急上昇し、ない間は alpha の倍率で減衰していく)
-    b = [1.0]           # 入力側の係数
-    a = [1.0, -alpha]   # 出力(自己回帰)側の係数
-    
-    # フィルタ適用 (axis=0 は時間方向)
-    filtered_data = lfilter(b, a, neural_data, axis=0)
-    
-    return filtered_data
-
 
 if __name__ == "__main__":
     # RNN_config.set_global_seed(cfg.SEED)

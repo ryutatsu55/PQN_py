@@ -12,6 +12,7 @@ import time
 import os
 import sys
 from pathlib import Path
+from scipy.signal import lfilter
 
 from src.PQN import PQNparam
 
@@ -372,9 +373,9 @@ class PQN_Reservoir_GPU:
         # 次のステップのために待機が必要な箇所を同期
         self.stream3.wait_for_event(self.evt_update_neuron)
         if record is not None:                                #recordの記述について追記必要(修正予定)
-            cuda.memcpy_dtoh_async(self.raster_log[j], self.raster_d.gpudata, stream=self.stream3)
             cuda.memcpy_dtoh_async(self.v_int[j], self.Vs_d.gpudata, stream=self.stream3)
-        cuda.memcpy_dtoh_async(self.I_input_log[j], self.synapses_out_d.gpudata, stream=self.stream3)
+            cuda.memcpy_dtoh_async(self.I_input_log[j], self.synapses_out_d.gpudata, stream=self.stream3)
+        cuda.memcpy_dtoh_async(self.raster_log[j], self.raster_d.gpudata, stream=self.stream3)
 
         self.stream3.wait_for_event(self.evt_spike_written)
         # 入力スパイクの生成と転送 (CPU -> GPU)
@@ -478,7 +479,7 @@ class PQN_Reservoir_GPU:
         results = {}
         # if record:
         results["rasters"] = self.raster_log
-        results["input"] = np.abs(self.I_input_log)
+        results["input"] = self.I_input_log
         results["v"] = self.v_log
         
         return results
@@ -570,8 +571,9 @@ def main(
     if return_feature:
         plt.close("all")
         read_indices = reservoir_state["output_indices"]
-        x_t = results["input"][:, read_indices].astype(np.float32)  # shape = (T, Nout)
-        return x_t
+        x_t = results["rasters"][:, read_indices].astype(np.float32)  # shape = (T, Nout)
+        x_t_filtered = apply_calcium_filter(x_t, dt=dt, tau=0.5)
+        return x_t_filtered
 
 
 # -------------------------------------------------------------
@@ -635,3 +637,29 @@ def plot_raster(dt, tmax, rasters, N, num, record):
     plt.savefig(f"{record["result_dir"]}/figs/{record["filename"]}_raster.png")
     np.save(f"{record["result_dir"]}/data/{record["filename"]}_raster.npy", rasters)
     plt.close()
+
+def apply_calcium_filter(neural_data: np.ndarray, dt: float, tau: float = 0.8) -> np.ndarray:
+    """
+    ニューロン活動にカルシウム蛍光の減衰ダイナミクスを適用する
+    
+    Args:
+        neural_data (np.ndarray): 形状 (Time, Neurons) の時系列データ
+        dt (float): サンプリング間隔 [s] (例: cfg.INPUT_DT)
+        tau (float): カルシウム減衰時定数 [s] (論文再現なら 0.6 ~ 1.0 程度)
+        
+    Returns:
+        np.ndarray: フィルタ適用後のデータ
+    """
+    # 減衰係数の計算 ( alpha = exp(-dt/tau) )
+    alpha = np.exp(-dt / tau)
+    
+    # フィルタ係数の設定
+    # 数式: y[t] = alpha * y[t-1] + x[t]
+    # (入力 x があると急上昇し、ない間は alpha の倍率で減衰していく)
+    b = [1.0]           # 入力側の係数
+    a = [1.0, -alpha]   # 出力(自己回帰)側の係数
+    
+    # フィルタ適用 (axis=0 は時間方向)
+    filtered_data = lfilter(b, a, neural_data, axis=0)
+    
+    return filtered_data

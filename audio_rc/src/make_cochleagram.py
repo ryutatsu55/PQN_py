@@ -19,7 +19,7 @@ def compute_cochleagram(audio_path: str, decimation_factor: int = 64) -> np.ndar
         y,
         int(sr),
         decimation_factor=decimation_factor,
-        step_factor=0.195 * 6,  # 16ch
+        step_factor=1.1,  # 17ch
     )
 
     print(f"original sampling duration : {1000/sr} [ms]")
@@ -62,7 +62,8 @@ def preprocess_with_lyon(audio_path: str, decimation_factor: int = 64) -> np.nda
     max_val = np.max(coch)
     
     # 0除算を防ぐため微小値(1e-9)を加える
-    coch_norm = (coch - min_val) / (max_val - min_val + 1e-9)
+    # coch_norm = (coch - min_val) / (max_val - min_val + 1e-9)
+    coch_norm = coch / max_val
 
     return coch_norm
 
@@ -95,6 +96,12 @@ def _process_sph_worker(args):
         os.makedirs(out_dir, exist_ok=True)
         out_path = os.path.join(out_dir, f"coch_{basename}.npy")
         np.save(out_path, coch)
+        
+        rev_out_dir = os.path.dirname(out_path).replace("coch_", "rev_coch_")
+        os.makedirs(rev_out_dir, exist_ok=True)
+        rev_out_path = os.path.join(rev_out_dir, f"coch_{basename}.npy")
+        np.save(rev_out_path, coch[::-1, :])  # 時間反
+
         return out_path
     except Exception as e:
         print(f"[ERROR] Failed to process {sph_path}: {e}")
@@ -279,7 +286,8 @@ if __name__ == "__main__":
                 train_root=audio_root + folder,
                 out_dir=f"audio_rc/reservoir_inputs/{folder}/coch_male_{name}",  # 出力先フォルダ
                 word_codes=[code],  # 指定した単語コードのみ
-                allowed_speakers=[f"m{i}" for i in range(1, 9)],
+                # allowed_speakers=[m"m{i}" for i in range(1, 9)],
+                allowed_speakers=["m1"],
                 decimation_factor=100,  # サンプリング時間の間引き
                 delete_wav=True,  # .wav は一時ファイルとして削除
                 n_jobs=None,  # CPU数 - 1 を自動で使用
@@ -290,7 +298,8 @@ if __name__ == "__main__":
                 train_root=audio_root + folder,
                 out_dir=f"audio_rc/reservoir_inputs/{folder}/coch_female_{name}",  # 出力先フォルダ
                 word_codes=[code],  # 指定した単語コードのみ
-                allowed_speakers=[f"f{i}" for i in range(1, 9)],
+                # allowed_speakers=[f"f{i}" for i in range(1, 9)],
+                allowed_speakers=["f1"],
                 decimation_factor=100,  # サンプリング時間の間引き
                 delete_wav=True,  # .wav は一時ファイルとして削除
                 n_jobs=None,  # CPU数 - 1 を自動で使用

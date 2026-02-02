@@ -1,5 +1,6 @@
 import numpy as np
 import random
+import argparse
 import os
 import shutil
 import sys
@@ -9,13 +10,21 @@ sys.path.append(str(root_path))
 import config
 
 cfg = config.Config
-rng = np.random.RandomState(cfg.SEED)
 
 # --- ディレクトリパス設定 ---
 BASE_DIR = "RNN_analyze"
 INPUT_DIR = os.path.join(BASE_DIR, "reservoir_inputs")
 OUTPUT_DIR = os.path.join(BASE_DIR, "reservoir_outputs")
 RESULT_DIR = os.path.join(BASE_DIR, "result")
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--seed", type=int, default=cfg.SEED,
+    help="random seed"
+)
+args = parser.parse_args()
+
+rng = np.random.RandomState(args.seed)
 
 def make_data():
     print(f"Generating data with N={cfg.N}, Strength={cfg.INPUT_STRENGTH}...")

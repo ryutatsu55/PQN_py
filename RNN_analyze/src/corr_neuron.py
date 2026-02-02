@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import os
 from tqdm import tqdm
 import seaborn as sns
+import argparse
 
 # 自作モジュールのインポート
 import sys
@@ -20,9 +21,16 @@ INPUT_DIR = os.path.join(BASE_DIR, "reservoir_inputs")
 OUTPUT_DIR = os.path.join(BASE_DIR, "reservoir_outputs")
 RESULT_DIR = os.path.join(BASE_DIR, "result")
 
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--seed", type=int, default=cfg.SEED,
+    help="random seed"
+)
+args = parser.parse_args()
+
 def analyze():
     print(">>> Initializing Reservoir and Simulator...")
-    reservoir_state = config.init_reservoir()
+    reservoir_state = config.init_reservoir(args.seed)
     sim = PQN_RNN.PQN_Reservoir_GPU(reservoir_state, cfg)
     
     dt = cfg.DT
