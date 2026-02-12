@@ -94,12 +94,12 @@ log_info "結果保存先: ${ARCHIVE_DIR}"
 # Step 1: 相関行列の解析
 section_header "Step 1: Analyzing Correlation Matrix"
 log_info "Running corr_neuron.py..."
-${PYTHON_EXEC} ${BASE_DIR}/src/corr_neuron.py
+PYTHONUNBUFFERED=1 ${PYTHON_EXEC} ${BASE_DIR}/src/corr_neuron.py
 
 # Step 2: データ生成
 section_header "Step 2: Input Data Generation"
 log_info "Running make_spatial_input.py..."
-${PYTHON_EXEC} ${BASE_DIR}/src/make_spatial_input.py
+PYTHONUNBUFFERED=1 ${PYTHON_EXEC} ${BASE_DIR}/src/make_spatial_input.py
 
 # Step 3: 時空間認識 (SNNモード)
 section_header "Step 3: Spatial Recognition (SNN Mode)"

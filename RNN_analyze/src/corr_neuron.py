@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import networkx as nx
 import os
 from tqdm import tqdm
 import seaborn as sns
@@ -27,8 +28,9 @@ parser.add_argument(
     help="random seed"
 )
 args = parser.parse_args()
+rng = np.random.RandomState(args.seed)
 
-def analyze():
+def main():
     print(">>> Initializing Reservoir and Simulator...")
     reservoir_state = config.init_reservoir(args.seed)
     sim = PQN_RNN.PQN_Reservoir_GPU(reservoir_state, cfg)
@@ -79,17 +81,31 @@ def analyze():
 
 
     print(">>> Calculating Correlation Matrix...")
-
-    correlation_matrix = np.corrcoef(activity_downsampled.T)
+    with np.errstate(invalid='ignore'):
+        correlation_matrix = np.corrcoef(activity_downsampled.T)
     correlation_matrix = np.nan_to_num(correlation_matrix)
     W_corr = np.abs(correlation_matrix)
 
     # 式[7]によるモジュール性Qの計算
-    Q_val = calculate_weighted_modularity_formula7(W_corr, n_modules=4)
+    Q_val = calculate_weighted_modularity(W_corr, n_modules=4)
     # 平均相関係数（対角成分を除く）
     mean_corr = np.mean(W_corr[~np.eye(cfg.N, dtype=bool)])
-    print(f"    Mean Absolute Correlation: {mean_corr:.4f}")
-    print(f"    Weighted Modularity Q:     {Q_val:.4f}")
+    print(f"    Mean Absolute Correlation (Activity): {mean_corr:.4f}")
+    print(f"    Weighted Modularity Q (Activity):     {Q_val:.4f}")
+    
+    weight_matrix = reservoir_state["reservoir_weight"]
+    # 1. 重みの絶対値をとる (相関の強さに対応させるため)
+    W_abs = np.abs(weight_matrix)
+    # 2. 対称化する (相関行列は対称行列であるため、形式を合わせる)
+    # 双方向の結合の平均強度をエッジの重みとする
+    W_struct = (W_abs + W_abs.T) / 2.0
+    # 3. 既存のQ計算ロジックを流用
+    # (calculate_weighted_modularity内で対角成分除去や正規化は行われるためそのまま渡せます)
+    Q_struct = calculate_weighted_modularity(W_struct, n_modules=4)
+    mean_corr = np.mean(W_struct[~np.eye(cfg.N, dtype=bool)])
+    print(f"    Mean Absolute Correlation (Structure): {mean_corr:.4f}")
+    print(f"    Weighted Modularity Q (Structure):     {Q_struct:.4f}")
+    
 
     # ==========================================
     # 5. 結果の可視化
@@ -108,11 +124,10 @@ def analyze():
     print("Saved correlation_matrix.npy")
 
     # 重み行列 (構造)
-    plt.figure(figsize=(8, 6))
     W = reservoir_state["reservoir_weight"]
-    max_w = np.max(np.abs(W))
+    plt.figure(figsize=(8, 6))
     sns.heatmap(W, cmap="plasma", center=0, cbar=True, square=True)           # cmap="vlag"/"plasma"
-    plt.title("Structural Connectivity (Weights)")
+    plt.title(f"Structural Connectivity (Weights)\n Q = {Q_struct: .4f}")
     plt.xlabel("Neuron From")
     plt.ylabel("Neuron To")
     plt.tight_layout()
@@ -122,31 +137,10 @@ def analyze():
     np.save(f"{RESULT_DIR}/data/weight_matrix.npy", W)
     print("Saved weight_matrix.npy")
     
-    # filename = "activity_trace"
-    # # オマケ: 最初の数ニューロンの活動時系列を表示
-    # plt.figure(figsize=(12, 4))
-    # time_axis = np.arange(total_steps) * dt
-    # # 最初の5個のニューロンだけ表示
-    # for i in range(5):
-    #     plt.plot(time_axis, activity_log[:, i], label=f"Neuron {i}")
-    # plt.xlabel("Time [s]")
-    # plt.ylabel("Synaptic Input Current (arb.)")
-    # plt.title("Sample Activity Traces")
-    # plt.legend(loc='upper right')
-    # plt.xlim(0, 30.0) # 最初の1秒だけ拡大
-    # plt.tight_layout()
-    # plt.savefig(f"{RESULT_DIR}/figs/{filename}.png")
+    visualize_reservoir_structure(W, n_modules=4)
+    
 
-    # # --- データの保存 ---
-    # # 保存先のディレクトリを作成
-    # save_data_dir = os.path.join(RESULT_DIR, "data")
-    # os.makedirs(save_data_dir, exist_ok=True)
-    # #   (TimeSteps, 6)  col 0: Time, col 1: Neuron 0, col 2: Neuron 1  ...
-    # data_to_save = np.column_stack((time_axis, activity_log[:, :5]))
-    # save_path = os.path.join(save_data_dir, f"{filename}.npy")
-    # np.save(save_path, data_to_save)
-
-def calculate_weighted_modularity_formula7(correlation_matrix, n_modules=4):
+def calculate_weighted_modularity(correlation_matrix, n_modules=4):
     """
     論文の式[7]（Newmanの重み付きモジュール性）に基づくQ値の計算
     
@@ -196,5 +190,107 @@ def calculate_weighted_modularity_formula7(correlation_matrix, n_modules=4):
     
     return Q
 
+def visualize_reservoir_structure(weight_matrix, n_modules=4):
+    N = cfg.N
+    module_size = N // n_modules
+    G = nx.DiGraph()
+
+    # ノードの追加
+    for i in range(N):
+        # モジュールID (0, 1, 2, 3)
+        module_id = i // module_size
+        
+        # 抑制性ニューロンかどうか判定
+        is_excited = np.any(weight_matrix[:, i] > 0)
+        
+        G.add_node(i, module=module_id, color='red' if is_excited else 'blue')
+
+    # エッジの追加
+    rows, cols = np.where(weight_matrix != 0)
+    for r, c in zip(rows, cols):
+        weight = weight_matrix[r, c] # c(From) -> r(To) への結合を表す
+        
+        # NetworkX は G.add_edge(u, v) で u -> v
+        G.add_edge(c, r, weight=abs(weight), color='red' if weight > 0 else 'blue')
+
+    # 3. レイアウト設定 (ここが重要: モジュールごとに固める)
+    pos = {}
+    
+    # 4つのモジュールの中心座標 (Fig 4Aのように四角形に配置)
+    module_centers = {
+        0: np.array([-1, 1]),  # 左上
+        1: np.array([-1, -1]),   # 左下
+        2: np.array([1, -1]),  # 右下
+        3: np.array([1, 1])  # 右上
+    }
+    
+    for mod_id in range(n_modules):
+        # このモジュールに所属するノードリスト
+        nodelist = [n for n in range(N) if G.nodes[n]["module"] == mod_id]
+        
+        # NetworkXのcircular_layoutを使って円周座標を取得 (中心は0,0)
+        # scaleは円の半径
+        sub_pos = nx.circular_layout(nodelist, scale=0.4)
+        
+        # モジュールの中心座標へずらす
+        center = module_centers[mod_id]
+        for n in nodelist:
+            pos[n] = sub_pos[n] + center
+
+    # 4. 描画
+    plt.figure(figsize=(10, 10))
+    ax = plt.gca()
+    
+    # ノード描画
+    
+    nodes = G.nodes(data=True)
+    for mod_id in range(n_modules):
+        nodelist = [n for n, d in nodes if d['module'] == mod_id]
+        node_colors = [d['color'] for n, d in nodes if d['module'] == mod_id]
+        nx.draw_networkx_nodes(
+            G, pos, 
+            nodelist=nodelist, 
+            node_color=node_colors,
+            node_size=300, 
+            edgecolors='black', # 枠線
+            label=f"Module {mod_id}"
+        )
+        
+    # ニューロン番号ラベル (必要なら)
+    # nx.draw_networkx_labels(G, pos, font_size=8)
+
+    # エッジ描画
+    # 興奮性 (Exc) -> 青, 抑制性 (Inh) -> 赤
+    edges = G.edges(data=True)
+    edgelist = [(u, v) for u, v, d in edges]
+    edge_colors = [d['color'] for u, v, d in edges]
+    edge_weights = [d['weight'] for u, v, d in edges]
+    nx.draw_networkx_edges(
+        G, pos, edgelist=edgelist, 
+        edge_color=edge_colors, 
+        alpha=0.3, 
+        width=edge_weights, 
+        arrows=True, arrowsize=10, 
+        connectionstyle="arc3,rad=0.1" # 少しカーブさせる
+    )
+
+    plt.title(f"mBNN Reservoir Structure (N={N}, 4 Modules)", fontsize=16)
+    plt.axis('off') # 軸を消す
+    
+    # 凡例用のダミー
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], color='red', lw=2, label='Excitatory'),
+        Line2D([0], [0], color='blue', lw=2, label='Inhibitory'),
+    ]
+    ax.legend(handles=legend_elements, loc='upper right')
+
+    plt.tight_layout()
+    plt.savefig(f"{RESULT_DIR}/figs/network.png", dpi=300)
+    plt.close()
+    print("Network graph saved to: network.png")
+
 if __name__ == "__main__":
-    analyze()
+    os.makedirs(os.path.join(RESULT_DIR, "figs"), exist_ok=True)
+    os.makedirs(os.path.join(RESULT_DIR, "data"), exist_ok=True)
+    main()

@@ -53,9 +53,14 @@ args = parser.parse_args()
 
 def main() -> None:
     print(f"Mode: {args.mode}")
+    print(f"SEED: {args.seed}")
     print(f"Number of reservoir cells: {cfg.N}")
-    print(f"Random seed: {args.seed}")
-    print()
+
+    # if os.path.exists(RESULT_DIR):
+    #     shutil.rmtree(RESULT_DIR)
+    #     print(f"deleted following directory: {RESULT_DIR} ( to make new input dataset )")
+    os.makedirs(os.path.join(RESULT_DIR, "figs"), exist_ok=True)
+    os.makedirs(os.path.join(RESULT_DIR, "data"), exist_ok=True)
 
     reservoir_state = None
     sim = None
@@ -186,12 +191,17 @@ def load_and_process_data(items, sim, reservoir_state, dt, recorded_areas, dsec=
         feat = None
         
         # n_steps: entire steps for each trial
+        tmax = None
+        n_steps = None
         if original_split == "train":
-            tmax = cfg.DURATION_INTERVAL
+            if hasattr(cfg, "DURATION_INTERVAL"):
+                tmax = cfg.DURATION_INTERVAL
+                n_steps = int(tmax / dt) 
         else:
-            tmax = cfg.TEACHING_DURATION
+            if hasattr(cfg, "TEACHING_DURATION"):
+                tmax = cfg.TEACHING_DURATION
+                n_steps = int(tmax / dt)
 
-        n_steps = int(tmax / dt)
         
         if args.mode == "linear":
             feat = np.load(input_path)
@@ -235,7 +245,7 @@ def load_and_process_data(items, sim, reservoir_state, dt, recorded_areas, dsec=
                     is_debug_print=False,
                     # record=True if i+1 == len(items) else False,
                     record=current_record,
-                    tmax=tmax,
+                    tmax=tmax if tmax is not None else None,
                     S_durt=cfg.INPUT_DT,
                     cfg=cfg,
                     sim=sim
@@ -244,9 +254,7 @@ def load_and_process_data(items, sim, reservoir_state, dt, recorded_areas, dsec=
                 np.save(save_path, feat)
             
         if feat is not None:
-            # 切り詰め/パディング (念のため)
-            if feat.shape[0] > n_steps: 
-                feat = feat[:n_steps]
+            n_steps = feat.shape[0]
             
             X_list.append(feat)
             y_labels.append(label)
@@ -313,12 +321,12 @@ def spatial_recognition(sim, reservoir_state) -> None:
     conf_matrix = np.zeros((3, 3), dtype=int)
 
     for i, feat in enumerate(X_train_list):
-        pred = predict(W_out, feat, dt)
+        pred = predict(W_out, feat)
         true = y_train_labels[i]
         if pred == true:
             train_correct += 1
     for i, feat in enumerate(X_test_list):
-        pred = predict(W_out, feat, dt)
+        pred = predict(W_out, feat)
         true = y_test_labels[i]
         conf_matrix[true, pred] += 1
         if pred == true:
@@ -335,7 +343,33 @@ def spatial_recognition(sim, reservoir_state) -> None:
 
     class_names = ["Top", "Middle", "Bottom"]
     num_classes = len(class_names)
+
     
+    print("--- Training Readout (Shuffle Control) ---")
+    y_train_labels_shuffle = list(y_train_labels)
+    rng.shuffle(y_train_labels_shuffle)
+    Y_train_shuffle_list = []
+
+    for i, x_feat in enumerate(X_train_list):
+        n_steps = x_feat.shape[0]
+        shuffled_label = y_train_labels_shuffle[i]
+        target_shuffled = create_target_signal_classification(n_steps, shuffled_label, num_classes, dt)
+        Y_train_shuffle_list.append(target_shuffled)
+        
+    Y_train_shuffle_all = np.vstack(Y_train_shuffle_list)
+    
+    W_out_shuffle = train_readout(X_train_all, Y_train_shuffle_all, lambda_reg=1.0)
+
+    test_correct_shuffle = 0
+    for i, x_trial in enumerate(X_test_list):
+        pred = predict(W_out_shuffle, x_trial)
+        true_label = y_test_labels[i]
+        if pred == true_label:
+            test_correct_shuffle += 1
+            
+    acc_test_shuffle = test_correct_shuffle / len(y_test_labels)
+    print(f"Test Accuracy (Shuffle): {acc_test_shuffle * 100:.2f}%")
+
     # Save Confusion Matrix Plot
     plt.figure(figsize=(6, 5))
     plt.imshow(conf_matrix, cmap="Blues")
@@ -353,15 +387,12 @@ def spatial_recognition(sim, reservoir_state) -> None:
     plt.tight_layout()
     
     save_fig_dir = f"{RESULT_DIR}/figs"
-    os.makedirs(save_fig_dir, exist_ok=True)
     filename = f"conf.png"
     plt.savefig(os.path.join(save_fig_dir, filename))
     plt.close()
     print(f"Saved confusion matrix to {os.path.join(save_fig_dir, filename)}")
 
     # --- Trajectory Analysis ---
-    os.makedirs(os.path.join(RESULT_DIR, "figs"), exist_ok=True)
-    os.makedirs(os.path.join(RESULT_DIR, "data"), exist_ok=True)
     analyze_trajectories(X_train_list, y_train_labels, W_out, dt)
 
     print()
@@ -694,7 +725,7 @@ def train_readout(X, Y, lambda_reg=1.0):
     W_out = np.linalg.solve(XtX + lambda_reg * I, XtY)
     return W_out
 
-def predict(W_out, feat, dt) -> np.intp:
+def predict(W_out, feat) -> np.intp:
     """
     空間認識用: 出力を時間積分(2.5s)して最大値判定
     """

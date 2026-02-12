@@ -6,6 +6,7 @@ class Config:
     # --- 基本設定 ---
     SEED = 10           # ベースとなるシード値
     N = 60             # ニューロン総数
+    N_MODULES = 4
     DT = 0.0001
     INPUT_DT = 0.01           # タイムステップ [s] (入力データのｄｔ)
     INPUT_DT_COCH = 8e-3
@@ -14,7 +15,7 @@ class Config:
     DURATION_STIM = 0.1           # 刺激時間 [s]
     TEACHING_DURATION = 2.5       # 教師信号時間 [s]
     DURATION_INTERVAL = 10       # 1試行の長さ [s] (spatial task)
-    # DURATION_INTERVAL_COCH = 10  # 1試行の長さ [s] (voice task)
+    DURATION_INTERVAL_COCH = 10  # 1試行の長さ [s] (voice task)
     INPUT_STRENGTH = 0.5          # 入力強度 [0, 1]
     
     N_TRAIN = 20                 # 学習データ数
@@ -24,14 +25,14 @@ class Config:
     # 14 / 6 for spoken digit
     
     # --- リザバー結合パラメータ ---
-    RESERVOIR_CONN = 0.03   # 結合強度係数 (元のコードの * 0.02)
+    RESERVOIR_CONN = 0.09   # 結合強度係数 (元のコードの * 0.02)
     INPUT_NODES = int(N//2)
     READOUT_NODES = 60
     INPUT_NODES_COCH = 17
     READOUT_NODES_COCH = 60            # 読み出し層のノード数
 
-    SPONTANEOUS_FREQ = 0.0
-    INPUT_FREQ = 20
+    SPONTANEOUS_FREQ = 0.1
+    INPUT_FREQ = 40
 
 def init_reservoir(seed=Config.SEED):
     N = Config.N
@@ -82,7 +83,7 @@ def create_moduled_matrix(N, rng):
     block_size = N // 4
     crust_idx = 0
     G = 0.5
-    p = 0.3
+    p = 0.1
     offset = 1.0
     while crust_idx != 4:
         i1 = int(crust_idx * N / 4)
@@ -114,7 +115,7 @@ def create_moduled_matrix(N, rng):
     # クラスター間の接続
     M = 4
     G = 0.5
-    p = 0.02
+    p = 0.01
     offset = 1.0
     for hoge in range(M):
         i_range1 = int((hoge * N / 4) % N)

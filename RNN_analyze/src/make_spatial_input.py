@@ -45,7 +45,7 @@ def make_data():
     in_neurons = [np.arange(0, hoge), np.arange(hoge, 2*hoge), np.arange(2*hoge, 3*hoge)]  # 入力ニューロン群のインデックス
     
     stim_steps = int(cfg.DURATION_STIM / dt)
-    entire_steps = int(cfg.DURATION_INTERVAL / dt)
+    # entire_steps = int(cfg.DURATION_INTERVAL / dt)
     
     # フォルダ作成
     for phase in phases:

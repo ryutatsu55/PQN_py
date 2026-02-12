@@ -81,7 +81,7 @@ trap error_handler ERR
 # --- 3. メイン処理 (Main Execution) ---
 
 if [ -f "${CONFIG_SRC}" ]; then
-    cp "${CONFIG_SRC}" "${RESULT_SRC}/RNN_config_snapshot.py"
+    cp "${CONFIG_SRC}" "${ARCHIVE_DIR}/RNN_config_snapshot.py"
     log_info "設定ファイルをスナップショットとして保存しました"
 else
     log_warn "設定ファイル (${CONFIG_SRC}) が見つかりません。バックアップをスキップします。"
@@ -112,7 +112,7 @@ for task in "${TASKS[@]}"; do
     # 1. Pythonスクリプト実行
     # 結果フォルダはスクリプト内で毎回初期化(削除)されます
     PYTHONUNBUFFERED=1 ${PYTHON_EXEC} ${BASE_DIR}/src/speech_recognition.py \
-        --mode linear \
+        --mode snn \
         --task "${task}"
 
     # 2. 結果の退避

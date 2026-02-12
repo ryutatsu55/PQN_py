@@ -297,11 +297,12 @@ def process_and_load_data(items, sim, reservoir_state, dt, recorded_voice, desc=
         
         tmax = None
         n_steps = None
-        if hasattr(cfg, "DURATION_INTERVAL_COCH"):
-            if original_split == "train":
+        if original_split == "train":
+            if hasattr(cfg, "DURATION_INTERVAL_COCH"):
                 tmax = cfg.DURATION_INTERVAL_COCH
                 n_steps = int(tmax / dt) 
-            else:
+        else:
+            if hasattr(cfg, "TEACHING_DURATION"):
                 tmax = cfg.TEACHING_DURATION
                 n_steps = int(tmax / dt)
         
@@ -502,7 +503,8 @@ def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], class_name
         plt.legend()
         plt.grid(True, linestyle='--', alpha=0.6)
         
-        save_path_dist = os.path.join(save_dir, "figs", "dist.png")
+        filename = "dist.png"
+        save_path_dist = os.path.join(save_dir, "figs", filename)
         plt.savefig(save_path_dist)
         plt.close()
         print(f"Saved Distance plot to {save_path_dist}")
@@ -515,10 +517,10 @@ def analyze_trajectories(X_list: list[np.ndarray], y_list: list[int], class_name
         # Col 3: Mean (Same Class)
         # Col 4: Std  (Same Class)
         dist_data_to_save = np.column_stack((t_axis, mean_diff, std_diff, mean_same, std_same))
-        filename = f"distance_analysis.npy"
+        filename = "dist.npy"
         save_path_npy = os.path.join(save_dir, "data", filename)
         np.save(save_path_npy, dist_data_to_save)
-        print(f"Saved distance analysis data to {save_path_npy} (Shape: {dist_data_to_save.shape})")
+        print(f"Saved distance analysis data to {save_path_npy} (Shape: (time[s], mean_diff, std_diff, mean_same, std_same))")
     else:
         print("Skipping distance analysis: Not enough pairs.")
 
@@ -571,12 +573,11 @@ def main():
     print(f"SEED: {args.seed}")
     print(f"Reservoir Cells: {cfg.N}")
 
-    save_dir = "audio_rc/result/"
-    if os.path.exists(save_dir):
-        shutil.rmtree(save_dir)
-        print(f"deleted following directory: {save_dir} ( to make new input dataset )")
-    os.makedirs(os.path.join(save_dir, "figs"), exist_ok=True)
-    os.makedirs(os.path.join(save_dir, "data"), exist_ok=True)
+    if os.path.exists(RESULT_DIR):
+        shutil.rmtree(RESULT_DIR)
+        print(f"deleted following directory: {RESULT_DIR} ( to make new input dataset )")
+    os.makedirs(os.path.join(RESULT_DIR, "figs"), exist_ok=True)
+    os.makedirs(os.path.join(RESULT_DIR, "data"), exist_ok=True)
 
     # 1. Initialize Simulator (SNNモードの場合のみ)
     sim = None
@@ -603,11 +604,11 @@ def main():
     rmv_dir = "audio_rc/reservoir_outputs"
     if os.path.exists(rmv_dir) and args.mode == "snn":
         shutil.rmtree(rmv_dir)
-        print(f"\n特徴量上書きのためディレクトリ {rmv_dir} を削除しました。")
+        print(f"\ndeleted following directory: {rmv_dir} ( to make new featured dataset )")
 
     # 4. Process (Load Cache or Simulate)
     recorded_voice = set()
-    print("--- Processing Training Data ---")
+    print("\n--- Processing Train Data ---")
     X_train_all, Y_train_all, X_train_list, y_train_labels, class_names_train = process_and_load_data(
         train_meta, sim, reservoir_state, dt, recorded_voice, desc="TRAIN"
         )
@@ -623,7 +624,7 @@ def main():
     
 
     # 5. Train & Evaluate
-    print("\n--- Testing with Temporal Integration ---")
+    # print("\n--- Testing with Temporal Integration ---")
     train_correct = 0
     test_correct = 0
     conf_matrix = np.zeros((2, 2), dtype=int)
@@ -701,15 +702,15 @@ def main():
     plt.tight_layout()
     
     filename = f"conf.png"
-    plt.savefig(os.path.join(save_dir, "figs", filename))
+    plt.savefig(os.path.join(RESULT_DIR, "figs", filename))
     plt.close()
-    print(f"Saved confusion matrix to {os.path.join(save_dir, 'figs', filename)}")
+    print(f"Saved confusion matrix to {os.path.join(RESULT_DIR, 'figs', filename)}")
 
     dt = cfg.INPUT_DT_COCH if args.mode == "linear" else cfg.DT
     X_full_list = X_train_list + X_test_list
     y_full_labels = y_train_labels + y_test_labels
     full_class_names = class_names_train + class_names_test
-    analyze_trajectories(X_full_list, y_full_labels, full_class_names, save_dir, dt, args.task)
+    analyze_trajectories(X_full_list, y_full_labels, full_class_names, RESULT_DIR, dt, args.task)
     # del X_train_list, X_test_list
     # gc.collect()
 
