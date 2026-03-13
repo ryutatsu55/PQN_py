@@ -119,13 +119,25 @@ for SEED in {1..21}; do
         echo -e "${RED}[ERROR] 結果ディレクトリが見つかりません。${RESET}"
     fi
 
+    log_info "Running precalc_features.py..."
+    PYTHONUNBUFFERED=1 ${PYTHON_EXEC} ${SPEECH_DIR}/src/precalc_features.py \
+        --seed "${SEED}"
+
+    PRECALC_ARCHIVE="${SEED_ARCHIVE_DIR}/pre_calc"
+    mkdir -p "${PRECALC_ARCHIVE}"
+    if [ -d "${SPEECH_RESULT}" ]; then
+        cp -r "${SPEECH_RESULT}/." "${PRECALC_ARCHIVE}"
+    else
+        echo -e "${RED}[ERROR] 結果ディレクトリが見つかりません。${RESET}"
+    fi
+
     # タスクごとのループ
     for task in "${TASKS[@]}"; do
         section_header "Running Task: ${task} (Seed: ${SEED})"
         
         # Python実行 (--seed を渡す)
         PYTHONUNBUFFERED=1 ${PYTHON_EXEC} ${SPEECH_DIR}/src/speech_recognition.py \
-            --mode snn \
+            --mode feature \
             --task "${task}" \
             --seed "${SEED}"
 

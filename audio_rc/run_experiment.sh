@@ -105,6 +105,18 @@ log_info "対象タスク数: ${#TASKS[@]}"
 log_info "結果出力先: ${RESULT_SRC}"
 log_info "結果保存先: ${ARCHIVE_DIR}"
 
+
+log_info "Running precalc_features.py..."
+PYTHONUNBUFFERED=1 ${PYTHON_EXEC} ${BASE_DIR}/src/precalc_features.py
+
+PRECALC_ARCHIVE="${ARCHIVE_DIR}/pre_calc"
+mkdir -p "${PRECALC_ARCHIVE}"
+if [ -d "${RESULT_SRC}" ]; then
+    cp -r "${RESULT_SRC}/." "${PRECALC_ARCHIVE}"
+else
+    echo -e "${RED}[ERROR] 結果ディレクトリが見つかりません。${RESET}"
+fi
+
 # --- メインループ ---
 for task in "${TASKS[@]}"; do
     section_header "Running Task: ${task}"
@@ -112,7 +124,7 @@ for task in "${TASKS[@]}"; do
     # 1. Pythonスクリプト実行
     # 結果フォルダはスクリプト内で毎回初期化(削除)されます
     PYTHONUNBUFFERED=1 ${PYTHON_EXEC} ${BASE_DIR}/src/speech_recognition.py \
-        --mode snn \
+        --mode feature \
         --task "${task}"
 
     # 2. 結果の退避

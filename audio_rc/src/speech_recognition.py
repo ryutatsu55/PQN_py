@@ -47,9 +47,10 @@ parser.add_argument(
         "f2m_digit", 
         "z2o_gender", 
         "o2z_gender", 
-        "reverse_f_z"]
+        "reverse_f_z",
+        ]
         ,
-    default="digit",
+    default="f2f_digit",
     help="Select the recognition task.\n"
          "digit: 0 vs 1 (mixed gender)\n"
          "gender: Female vs Male (mixed digit)\n"
@@ -133,28 +134,58 @@ def collect_file_metadata():
 
     metadata_list = []
 
-    for split, base_dir in base_dirs.items():
-        for cat in categories:
-            subdir = cat["dir"]
-            # 入力ファイル (.npy) を探す
-            search_path = os.path.join(base_dir, subdir, "*.npy")
-            files = sorted(glob.glob(search_path))
-            
-            for path in files:
-                metadata_list.append({
-                    "input_path": path,
-                    "gender": cat["gender"],
-                    "digit": cat["digit"],
-                    "reverse": cat["reverse"],
-                    "split": split, # original split ('train' or 'test')
-                    "subdir_name": subdir # 保存先ディレクトリ作成用
-                })
+    # --- Mode: Feature (抽出済みファイルのみ対象) ---
+    if args.mode == "feature":
+        base_dirs = {
+            "train": "audio_rc/reservoir_outputs/train",
+            "test": "audio_rc/reservoir_outputs/test"
+        }
+        for split, base_dir in base_dirs.items():
+            for cat in categories:
+                # 特徴量ディレクトリ名は "coch_" -> "features_" に置換されている
+                feat_subdir = cat["dir"].replace("coch_", "features_")
+                search_path = os.path.join(base_dir, feat_subdir, "*.npy")
+                files = sorted(glob.glob(search_path))
+                
+                for path in files:
+                    # path は特徴量ファイルのパス
+                    # input_path として保持するが、後で feature モードならそのままロードされる
+                    metadata_list.append({
+                        "input_path": path, # ここが特徴量パスになる
+                        "gender": cat["gender"],
+                        "digit": cat["digit"],
+                        "reverse": cat["reverse"],
+                        "split": split,
+                        "subdir_name": cat["dir"] # 元のsubdir名も保持
+                    })
+
+    # --- Mode: SNN / Linear (元データを対象) ---
+    else:
+        base_dirs = {
+            "train": "audio_rc/reservoir_inputs/train",
+            "test": "audio_rc/reservoir_inputs/test"
+        }
+        for split, base_dir in base_dirs.items():
+            for cat in categories:
+                subdir = cat["dir"]
+                search_path = os.path.join(base_dir, subdir, "*.npy")
+                files = sorted(glob.glob(search_path))
+                
+                for path in files:
+                    metadata_list.append({
+                        "input_path": path,
+                        "gender": cat["gender"],
+                        "digit": cat["digit"],
+                        "reverse": cat["reverse"],
+                        "split": split,
+                        "subdir_name": subdir
+                    })
     
     return metadata_list
 
 def select_files_for_task(metadata_list, task, rng):
-    train_items = []
-    test_items = []
+    candidates_train = []
+    candidates_test = []
 
     for item in metadata_list:
         gender = item["gender"]
@@ -228,23 +259,62 @@ def select_files_for_task(metadata_list, task, rng):
         # ラベル情報を付与してリストに追加
         if is_train:
             item["label"] = label
-            train_items.append(item)
+            candidates_train.append(item)
         elif is_test:
             item["label"] = label
-            test_items.append(item)
+            candidates_test.append(item)
 
-    # --- Shuffling ---
-    rng.shuffle(train_items)
-    rng.shuffle(test_items)
 
-    # --- Apply Limits (N_TRAIN, N_TEST) ---
-    # config.py に N_TRAIN, N_TEST が定義されている前提
-    # 定義されていない場合は全数使用
-    n_train_limit = getattr(cfg, "N_TRAIN_COCH", len(train_items))
-    n_test_limit = getattr(cfg, "N_TEST_COCH", len(test_items))
+    # Configから回数を取得
+    n_train_target = getattr(cfg, "N_TRAIN_COCH", len(candidates_train))
+    n_test_target = getattr(cfg, "N_TEST_COCH", len(candidates_test))
 
-    train_items = train_items[:n_train_limit]
-    test_items = test_items[:n_test_limit]
+    if args.mode != "feature":
+        
+        def expand_representative_files(items, n_limit):
+            """クラスごとに1つ選び、n_limit回複製する"""
+            grouped = {}
+            # クラスごとにグループ化 (gender, digit, reverse)
+            for it in items:
+                key = (it["gender"], it["digit"], it["reverse"])
+                if key not in grouped: grouped[key] = []
+                grouped[key].append(it)
+            
+            expanded = []
+            for key, group in grouped.items():
+                if not group: continue
+                # 各クラスの先頭のファイルを代表として選ぶ
+                rep = group[0]
+                
+                # 指定回数だけ複製してリストに追加
+                for i in range(n_limit):
+                    new_item = rep.copy()
+                    new_item["rep_idx"] = i  # 繰り返し番号 (0, 1, ..., 19)
+                    expanded.append(new_item)
+            return expanded
+
+        # train_items = expand_representative_files(candidates_train, n_train_target)
+        # test_items = expand_representative_files(candidates_test, n_test_target)
+        train_items = candidates_train
+        test_items = candidates_test
+        # --- Shuffling ---
+        rng.shuffle(train_items)
+        rng.shuffle(test_items)
+        train_items = train_items[:n_train_target]
+        test_items = test_items[:n_test_target]
+        # print(train_items)
+        # print(test_items)
+        
+    else:
+        # Featureモードの時は、保存されているファイルをそのまま使う (既に増殖済み)
+        train_items = candidates_train
+        test_items = candidates_test
+        # --- Shuffling ---
+        rng.shuffle(train_items)
+        rng.shuffle(test_items)
+        train_items = train_items[:n_train_target]
+        test_items = test_items[:n_test_target]
+        # train_items = train_items[:getattr(cfg, "N_TRAIN_COCH", 20)]
 
     return train_items, test_items
 
@@ -252,16 +322,19 @@ def select_files_for_task(metadata_list, task, rng):
 # 3. Execution (Simulate or Load)
 # ================================
 
-def get_feature_save_path(input_path, original_split, subdir_name):
+def get_feature_save_path(input_path, original_split, subdir_name, rep_idx=None):
     """
     入力パスに対応する特徴量の保存先パスを生成する。
-    構造: audio_rc/reservoir_outputs/{train|test}/features_{subdir}/{filename}
+    構造: audio_rc/reservoir_outputs/{train|test}/features_{subdir}/{filename}_rep{rep_idx}
     """
     filename = os.path.basename(input_path)
+    if rep_idx is not None:
+        name, ext = os.path.splitext(filename)
+        filename = f"{name}_rep{rep_idx}{ext}"
     # coch_female_zero -> features_female_zero
     feat_subdir = subdir_name.replace("coch_", "features_")
     
-    save_dir = os.path.join("audio_rc", "reservoir_outputs", original_split, feat_subdir)
+    save_dir = os.path.join(OUTPUT_DIR, original_split, feat_subdir)
     save_path = os.path.join(save_dir, filename)
     return save_path, save_dir
 
@@ -292,7 +365,13 @@ def process_and_load_data(items, sim, reservoir_state, dt, recorded_voice, desc=
         class_name = f"rev_{class_name}" if reverse else class_name
 
         # 特徴量の保存先パスを決定
-        save_path, save_dir = get_feature_save_path(input_path, original_split, subdir_name)
+        if args.mode == "feature":
+            save_path = input_path
+            save_dir = os.path.dirname(input_path)
+        else:
+            # rep_idx = item["rep_idx"]
+            rep_idx = None
+            save_path, save_dir = get_feature_save_path(input_path, original_split, subdir_name, rep_idx)
         feat = None
         
         tmax = None
@@ -319,13 +398,7 @@ def process_and_load_data(items, sim, reservoir_state, dt, recorded_voice, desc=
 
         # --- Mode: Feature (既存ファイルのみロード) ---
         elif args.mode == "feature":
-            if os.path.exists(save_path):
-                feat = np.load(save_path)
-            else:
-                # featureモードなのにファイルがない場合はスキップするかエラーにする
-                # ここではスキップ
-                print(f"Warning: Feature file not found: {save_path}")
-                continue
+            feat = np.load(save_path)
 
         # --- Mode: SNN (シミュレーション + キャッシング) ---
         elif args.mode == "snn":

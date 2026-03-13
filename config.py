@@ -4,7 +4,7 @@ import os
 
 class Config:
     # --- 基本設定 ---
-    SEED = 10           # ベースとなるシード値
+    SEED = 100           # ベースとなるシード値
     N = 60             # ニューロン総数
     N_MODULES = 4
     DT = 0.0001
@@ -31,14 +31,15 @@ class Config:
     INPUT_NODES_COCH = 17
     READOUT_NODES_COCH = 60            # 読み出し層のノード数
 
-    SPONTANEOUS_FREQ = 0.1
+    SPONTANEOUS_FREQ = 0
     INPUT_FREQ = 40
 
 def init_reservoir(seed=Config.SEED):
     N = Config.N
     # seed = Config.SEED
     rng = np.random.RandomState(seed)
-    resovoir_origin, mask, type = create_moduled_matrix(N, rng)
+    # resovoir_origin, mask, type = create_moduled_matrix(N, rng)
+    resovoir_origin, mask, type = create_random_matrix(N, rng)
     resovoir_weight = np.copy(resovoir_origin) * Config.RESERVOIR_CONN
     N_S = np.count_nonzero(resovoir_weight)
     tau_rec_h, tau_inact_h, tau_faci_h, U1_h, U_h, mask_faci_h, tr, td = synapses_init(resovoir_weight, N, N_S)
@@ -181,9 +182,14 @@ def create_moduled_matrix(N, rng):
 
 def create_random_matrix(N, rng):
     resovoir_weight = np.zeros((N, N))
-    G = 0.1
-    p = 0.05
-    resovoir_weight = ((G * rng.randn(N, N)) + 1) * (rng.rand(N, N) < p)
+    block_size = N // 4
+    crust_idx = 0
+    G = 0.5
+    p = 0.1
+    offset = 1.0
+    resovoir_weight = ((G * rng.randn(N, N)) + offset) * (
+        rng.rand(N, N) < p
+    )
 
     # 抑制結合の設定
     mask = np.ones((N, N))
@@ -239,9 +245,9 @@ def calc_init(resovoir_weight, N, N_S):
 
 
 def delay_init(resovoir_weight, N, N_S, mask, rng):
-    delays = rng.randint(100, 1000, size=(N,N))
+    # delays = rng.randint(100, 1000, size=(N,N))
     # delays = np.full((N, N), 1000, dtype=np.int32)
-    # delays = (40 + 10 * rng.randn(N, N)).astype(np.int32)  # 平均4ms 標準偏差1.0ms (大体1ms 〜 7msの範囲)
+    delays = (40 + 10 * rng.randn(N, N)).astype(np.int32)  # 平均4ms 標準偏差1.0ms (大体1ms 〜 7msの範囲)
     delays = delays * (mask != 0)
     delay_row = np.zeros(N_S, dtype=np.int32)
     col_indices, row_indices = np.where(resovoir_weight.T != 0)
